@@ -2108,15 +2108,18 @@ function mergeEmployeesFromSheet(sheetList) {
   for (var k in pendingEmpChanges) {
     if (pendingEmpChanges[k].expiresAt < now) delete pendingEmpChanges[k];
   }
-  // 🆕 Clean stale clockIn/clockOut from older days BEFORE returning
-  // (Run on the cleaned list directly so every sync auto-resets)
+  // 🆕 FIX v4: Only clear clockIn when we're CERTAIN it's from a
+  // different day. If parsing fails, the value is most likely a fresh
+  // "HH:MM" from today (Apps Script writes clean HH:MM strings) —
+  // wiping it here is what caused the May 1 clock-in revert bug.
   var todayYMD = (typeof fmtLaoYMD === 'function') ? fmtLaoYMD(new Date()) : '';
   if (todayYMD) {
     clean.forEach(function(e){
       if (!e || !e.clockIn) return;
       var inYMD = (typeof fmtLaoYMD === 'function') ? fmtLaoYMD(e.clockIn) : '';
-      // Either parseable date that's not today, OR completely unparseable junk → clear
-      if ((inYMD && inYMD !== todayYMD) || !inYMD) {
+      // Only wipe if parseable AND from a different day.
+      // Empty inYMD = "HH:MM only" (today's clock-in) → KEEP it.
+      if (inYMD && inYMD !== todayYMD) {
         e.clockIn  = null;
         e.clockOut = null;
         if (e.status === 'present') e.status = 'absent';
@@ -2157,14 +2160,19 @@ function resetStaleClockState() {
   if (!todayYMD) return;
   employees.forEach(function(e){
     var inYMD = e.clockIn ? ((typeof fmtLaoYMD === 'function') ? fmtLaoYMD(e.clockIn) : '') : '';
+    // 🆕 FIX v4: Only clear when we're CERTAIN it's from a different day.
+    // The "unparseable" branch was wiping valid HH:MM strings from today.
+    // If clockIn looks like an Excel epoch leak ("1899-12-30..."), parseLaoTime
+    // already returns null for years < 1990, so inYMD will be ''.
+    // For pure "HH:MM" values, parseLaoTime constructs today's date — so
+    // inYMD will equal todayYMD and we keep it.
     if (e.clockIn && inYMD && inYMD !== todayYMD) {
-      // clockIn is from a different day — clear local state for clean today's view
       e.clockIn  = null;
       e.clockOut = null;
-      // Only clear "present" — keep "leave" status (separate concept, set elsewhere)
       if (e.status === 'present') e.status = 'absent';
-    } else if (e.clockIn && !inYMD) {
-      // Unparseable clockIn (e.g. "1899-12-30..." Excel epoch leak) — also clear
+    }
+    // Excel epoch leak: clockIn looks like a date string but parses to pre-1990
+    else if (e.clockIn && typeof e.clockIn === 'string' && /^\d{4}-\d{2}-\d{2}/.test(e.clockIn) && !inYMD) {
       e.clockIn  = null;
       e.clockOut = null;
       if (e.status === 'present') e.status = 'absent';
@@ -2746,26 +2754,33 @@ function fmtLAK(n){ return n.toLocaleString()+' LAK'; }
 
 // Convert any time-ish value (string, ISO, Date, "08:30") to a JS Date
 // in Laos timezone. Returns null if not parseable.
+// 🆕 FIX v4: Convert any time-ish value (string, ISO, Date, "08:30") to a JS Date.
+// Returns null only when the value is obviously broken (Excel epoch leak,
+// truly unparseable string). For pure "HH:MM" values, returns a Date pinned
+// to today — which is what we want, since the Apps Script writes today's
+// clock-ins as plain "HH:MM" strings.
 function parseLaoTime(input) {
   if (!input) return null;
   if (input instanceof Date) {
     if (isNaN(input.getTime())) return null;
+    // Excel epoch leak guard — also applies to Date objects
+    if (input.getFullYear() < 1990) return null;
     return input;
   }
   var s = String(input).trim();
   if (!s) return null;
-  // Pure HH:MM (today's clock-in) — combine with today's date in Lao time
+  // Pure HH:MM or HH:MM:SS (today's clock-in) → pin to today's date.
+  // Device timezone == Lao timezone since restaurant is in Vientiane.
   var hm = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (hm) {
     var now = new Date();
-    var d = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
-                     parseInt(hm[1],10), parseInt(hm[2],10), parseInt(hm[3]||'0',10));
-    return d;
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+                    parseInt(hm[1],10), parseInt(hm[2],10), parseInt(hm[3]||'0',10));
   }
-  // ISO timestamp — parse, but treat zero-epoch dates as bad data
+  // ISO / RFC timestamp
   var d2 = new Date(s);
   if (isNaN(d2.getTime())) return null;
-  // The "1899-12-30" pattern is Excel/Sheets epoch leak — treat as bad data
+  // Excel/Sheets epoch leak ("1899-12-30...") → treat as bad data
   if (d2.getFullYear() < 1990) return null;
   return d2;
 }
@@ -6817,6 +6832,37 @@ function syncFromSheets() {
     document.getElementById('sync-status').textContent='Synced '+employees.length+' employees';
   }, true);
 }
+
+// 🆕 FIX v4: Diagnostic helper — call mimiPing() from browser console
+// to verify the connection between webapp ↔ Apps Script ↔ Sheet.
+// Logs every step so any failure is obvious.
+window.mimiPing = function() {
+  console.log('═══ MiMi Connection Test ═══');
+  console.log('SHEET_URL:', SHEET_URL);
+  console.log('Today (Lao):', (typeof fmtLaoYMD==='function') ? fmtLaoYMD(new Date()) : '—');
+  console.log('Now (Lao):',   (typeof fmtLaoTime==='function') ? fmtLaoTime(new Date()) : '—');
+  if (!SHEET_URL) { console.error('❌ SHEET_URL is empty!'); return; }
+  console.log('→ Pinging getEmployees...');
+  fetch(SHEET_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({action:'getEmployees'})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if (d && d.ok) {
+      console.log('✅ Apps Script responded. Employees in sheet:', (d.employees||[]).length);
+      if (d.employees && d.employees.length) {
+        console.log('First employee:', d.employees[0]);
+      }
+    } else {
+      console.error('❌ Apps Script returned error:', d && d.error);
+    }
+  })
+  .catch(function(e){
+    console.error('❌ Network error — Apps Script URL may be wrong or not deployed:', e.message);
+  });
+};
 
 // ---- AUTO-SYNC SILENTLY ON PAGE LOAD ----
 function autoSyncOnLoad() {
