@@ -6255,10 +6255,30 @@ var autoSaveTimer = null;
 function apiPost(body, cb, silent) {
   if (!SHEET_URL) { if(cb) cb(null); return; }
   if (!silent) setBar(30);
-  fetch(SHEET_URL, {method:'POST', body:JSON.stringify(body)})
+  // 🆕 FIX: Use text/plain to avoid CORS preflight that Google Apps Script doesn't handle.
+  // Without this header, browsers send an OPTIONS request that Apps Script rejects, and the
+  // real POST never reaches the server — silently failing with no data ever saved.
+  fetch(SHEET_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body),
+    redirect: 'follow'
+  })
     .then(function(r){ return r.json(); })
-    .then(function(d){ if(!silent) setBar(100); if(cb) cb(d); })
-    .catch(function(err){ if(!silent) setBar(100); if(cb) cb(null); });
+    .then(function(d){
+      if(!silent) setBar(100);
+      // 🆕 Log API errors so they're visible in console (instead of silent failure)
+      if (d && !d.ok && d.error) {
+        console.warn('[apiPost] action=' + (body && body.action) + ' returned error:', d.error);
+      }
+      if(cb) cb(d);
+    })
+    .catch(function(err){
+      if(!silent) setBar(100);
+      // 🆕 Log network errors instead of swallowing them
+      console.error('[apiPost] action=' + (body && body.action) + ' network error:', err && err.message);
+      if(cb) cb(null);
+    });
 }
 
 function setBar(pct) {
