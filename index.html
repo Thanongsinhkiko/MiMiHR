@@ -565,7 +565,7 @@ input[type=file]{display:none;}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
         <div>
           <div class="sec-title"><span class="bi"><span class="bi-en">Personal Info</span><span class="bi-lo">ຂໍ້ມູນສ່ວນຕົວ</span></span></div>
-          <div class="frow"><div class="fg"><label><span class="bi"><span class="bi-en">Full Name *</span><span class="bi-lo">ຊື່ເຕັມ *</span></span></label><input class="fc" id="nf-name" placeholder="Noy Vongkhamphanh"></div><div class="fg"><label><span class="bi"><span class="bi-en">Employee ID *</span><span class="bi-lo">ລະຫັດພະນັກງານ *</span></span></label><input class="fc" id="nf-id" placeholder="MM009"></div></div>
+          <div class="frow"><div class="fg"><label><span class="bi"><span class="bi-en">Full Name *</span><span class="bi-lo">ຊື່ເຕັມ *</span></span></label><input class="fc" id="nf-name" placeholder="Full name / ຊື່ເຕັມ"></div><div class="fg"><label><span class="bi"><span class="bi-en">Employee ID *</span><span class="bi-lo">ລະຫັດພະນັກງານ *</span></span></label><input class="fc" id="nf-id" placeholder="MM009"></div></div>
           <div class="frow"><div class="fg"><label><span class="bi"><span class="bi-en">Age</span><span class="bi-lo">ອາຍຸ</span></span></label><input class="fc" id="nf-age" type="number" placeholder="25"></div><div class="fg"><label><span class="bi"><span class="bi-en">Province</span><span class="bi-lo">ແຂວງ</span></span></label><input class="fc" id="nf-origin" placeholder="Vientiane"></div></div>
           <div class="frow"><div class="fg"><label><span class="bi"><span class="bi-en">Religion</span><span class="bi-lo">ສາສະໜາ</span></span></label><select class="fc" id="nf-religion"><option>Buddhist / ພຸດທະສາດ</option><option>Christian / ຄຣິສຕຽນ</option><option>Animist / ວິນຍານ</option><option>Other / ອື່ນໆ</option></select></div><div class="fg"><label><span class="bi"><span class="bi-en">Phone</span><span class="bi-lo">ເບີໂທ</span></span></label><input class="fc" id="nf-phone" placeholder="020 xxx xxxx"></div></div>
           <div class="fg"><label><span class="bi"><span class="bi-en">Login Password</span><span class="bi-lo">ລະຫັດຜ່ານ</span></span></label><input class="fc" id="nf-pass" type="password" placeholder="Set login password"></div>
@@ -711,6 +711,29 @@ input[type=file]{display:none;}
 
   <!-- SUMMARY STATS -->
   <div id="att-summary-stats" class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:18px"></div>
+
+  <!-- 🆕 ACTIVITY LOG (Level 1 audit) — every clock event with proof -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-hd">
+      <span class="card-title">
+        <span class="bi"><span class="bi-en">📋 Activity Log — recent clock events</span><span class="bi-lo">📋 ບັນທຶກການເຄື່ອນໄຫວ — ເຫດການຫຼ້າສຸດ</span></span>
+      </span>
+      <button class="btn btn-out" style="padding:5px 10px;font-size:11px" onclick="fetchAttendanceLog()">🔄 Refresh</button>
+    </div>
+    <div class="card-bd" style="padding:0;overflow-x:auto;max-height:340px;overflow-y:auto">
+      <table class="htable" style="font-size:12px">
+        <thead><tr>
+          <th><span class="bi"><span class="bi-en">Date</span><span class="bi-lo">ວັນທີ</span></span></th>
+          <th><span class="bi"><span class="bi-en">Time</span><span class="bi-lo">ເວລາ</span></span></th>
+          <th><span class="bi"><span class="bi-en">Employee</span><span class="bi-lo">ພະນັກງານ</span></span></th>
+          <th><span class="bi"><span class="bi-en">Action</span><span class="bi-lo">ການກະທຳ</span></span></th>
+          <th><span class="bi"><span class="bi-en">Method</span><span class="bi-lo">ວິທີ</span></span></th>
+          <th><span class="bi"><span class="bi-en">By</span><span class="bi-lo">ໂດຍ</span></span></th>
+        </tr></thead>
+        <tbody id="activity-log-rows"><tr><td colspan="6" style="text-align:center;padding:18px;color:var(--g400);font-size:12px;font-style:italic">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 
   <!-- MAIN TABLE -->
   <div class="card">
@@ -1921,7 +1944,7 @@ function showView(id) {
   if(id==='standardcheck') renderStandardCheck();
   if(id==='kpi')        renderKPI();
   if(id==='add-emp')    switchAddTab('manual');
-  if(id==='attendance') { fetchAttendanceFromSheets(); renderMonthly(); }
+  if(id==='attendance') { fetchAttendanceFromSheets(); fetchAttendanceLog(); renderMonthly(); }
   if(id==='qr')         { renderQRImage(); }
   if(id==='schedule')   renderScheduleView();
   if(id==='dashboard')  pullAllFromSheets(function(){ renderDashboard(); renderEmployees(employees); updateLeaveBadge(); }, true);
@@ -2108,31 +2131,181 @@ function mergeEmployeesFromSheet(sheetList) {
   for (var k in pendingEmpChanges) {
     if (pendingEmpChanges[k].expiresAt < now) delete pendingEmpChanges[k];
   }
-  // 🆕 FIX v4: Only clear clockIn when we're CERTAIN it's from a
-  // different day. If parsing fails, the value is most likely a fresh
-  // "HH:MM" from today (Apps Script writes clean HH:MM strings) —
-  // wiping it here is what caused the May 1 clock-in revert bug.
-  var todayYMD = (typeof fmtLaoYMD === 'function') ? fmtLaoYMD(new Date()) : '';
-  if (todayYMD) {
-    clean.forEach(function(e){
-      if (!e || !e.clockIn) return;
-      var inYMD = (typeof fmtLaoYMD === 'function') ? fmtLaoYMD(e.clockIn) : '';
-      // Only wipe if parseable AND from a different day.
-      // Empty inYMD = "HH:MM only" (today's clock-in) → KEEP it.
-      if (inYMD && inYMD !== todayYMD) {
-        e.clockIn  = null;
-        e.clockOut = null;
-        if (e.status === 'present') e.status = 'absent';
-      }
-    });
-  }
+  // 🆕 v6: clockIn/clockOut/status now come from attendanceLog via hydrateEmployeesFromLog().
+  //    Anything in those fields from the Sheet is legacy and ignored.
+  clean.forEach(function(e){
+    if (!e) return;
+    e.clockIn  = null;
+    e.clockOut = null;
+    // status will be overwritten by hydrateEmployeesFromLog after merge
+  });
   // For any employee with an active pending change, overlay the local fields
-  if (Object.keys(pendingEmpChanges).length === 0) return clean;
-  return clean.map(function(e){
+  if (Object.keys(pendingEmpChanges).length === 0) {
+    // 🆕 v6: rehydrate clock state from log after merge
+    var result = clean;
+    setTimeout(function(){
+      employees = result;
+      hydrateEmployeesFromLog();
+    }, 0);
+    return clean;
+  }
+  var merged = clean.map(function(e){
     if (!e || !e.id) return e;
     var p = pendingEmpChanges[e.id];
     if (!p || p.expiresAt < now) return e;
     return Object.assign({}, e, p.fields);
+  });
+  // 🆕 v6: rehydrate after pending overlay too
+  setTimeout(function(){
+    hydrateEmployeesFromLog();
+  }, 0);
+  return merged;
+}
+
+// 🆕 SINGLE SOURCE OF TRUTH for attendance status
+//    Used by merge, render, manual clock, and self clock — keep them consistent.
+function computeStatus(e) {
+  if (!e) return 'absent';
+  // 'leave' takes precedence (employee on approved leave today)
+  if (e.status === 'leave') return 'leave';
+  if (!e.clockIn) return 'absent';
+  if (e.clockOut) return 'completed';
+  return 'present';
+}
+
+// 🆕 Convert "HH:MM" or Date to minutes-of-day (0–1439). null on failure.
+function timeStrToMinutes(v) {
+  if (!v) return null;
+  if (v instanceof Date) {
+    if (v.getFullYear() < 1990) return null;
+    return v.getHours() * 60 + v.getMinutes();
+  }
+  var s = String(v).trim();
+  var m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  var h = parseInt(m[1], 10), mm = parseInt(m[2], 10);
+  if (isNaN(h) || isNaN(mm) || h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+  return h * 60 + mm;
+}
+
+// ============================================================
+// 🆕 EVENT-LOG ARCHITECTURE (v6)
+// ============================================================
+// Single source of truth = attendanceLog array (synced from AttendanceLog sheet).
+// Employee.clockIn / clockOut / status are DERIVED from log every render.
+// This eliminates drift permanently — there is no second copy to drift from.
+// ============================================================
+
+// Returns YYYY-MM-DD in Vientiane time (UTC+7) — independent of device timezone
+function todayKey() {
+  // 🆕 v6.1: force Lao timezone so device timezone doesn't break "today" math
+  var n = new Date();
+  var laoOffset = 7 * 60;
+  var localOffset = n.getTimezoneOffset();
+  var d = new Date(n.getTime() + (laoOffset + localOffset) * 60000);
+  var y = d.getFullYear();
+  var m = ('0'+(d.getMonth()+1)).slice(-2);
+  var dd = ('0'+d.getDate()).slice(-2);
+  return y+'-'+m+'-'+dd;
+}
+
+// Format a Date or ISO string to "HH:MM"
+function toHHMM(t) {
+  if (!t) return null;
+  var d = (t instanceof Date) ? t : new Date(t);
+  if (isNaN(d.getTime())) return null;
+  if (d.getFullYear() < 1990) return null;
+  return ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
+}
+
+// Check whether an employee is on approved leave for today
+function isOnLeaveToday(empId) {
+  if (!Array.isArray(leaveRequests)) return false;
+  var today = todayKey();
+  return leaveRequests.some(function(r){
+    if (!r || r.empId !== empId) return false;
+    if (r.status !== 'approved') return false;
+    var from = r.fromDate || r.from || '';
+    var to   = r.toDate   || r.to   || from;
+    if (!from) return false;
+    return String(from) <= today && today <= String(to);
+  });
+}
+
+// Derive each employee's clockIn/clockOut/status from today's log events.
+// MUST be called whenever attendanceLog or leaveRequests changes, OR before render.
+function hydrateEmployeesFromLog() {
+  if (!Array.isArray(employees)) return;
+  if (!Array.isArray(attendanceLog)) attendanceLog = [];
+
+  var today = todayKey();
+  // Group today's events by empId
+  var byEmp = {};
+  attendanceLog.forEach(function(r){
+    if (!r || !r.empId) return;
+    // 🆕 v6.1: Prefer the explicit `date` field (already in Lao YYYY-MM-DD)
+    //    over re-deriving from timestamp, which can shift due to device tz.
+    var ymd = '';
+    if (r.date) {
+      ymd = String(r.date).slice(0, 10);
+    } else if (r.timestamp) {
+      // Convert timestamp to Lao time before extracting YMD
+      var n = new Date(r.timestamp);
+      if (isNaN(n.getTime())) return;
+      var laoOffset = 7 * 60;
+      var localOffset = n.getTimezoneOffset();
+      var dLao = new Date(n.getTime() + (laoOffset + localOffset) * 60000);
+      ymd = dLao.getFullYear()+'-'+('0'+(dLao.getMonth()+1)).slice(-2)+'-'+('0'+dLao.getDate()).slice(-2);
+    } else { return; }
+
+    var ts = r.timestamp ? new Date(r.timestamp) : new Date();
+    if (ymd !== today) return;
+    if (!byEmp[r.empId]) byEmp[r.empId] = [];
+    byEmp[r.empId].push({ts:ts, action:r.action});
+  });
+
+  employees.forEach(function(e){
+    var events = byEmp[e.id] || [];
+    // Sort chronologically
+    events.sort(function(a,b){ return a.ts - b.ts; });
+    var firstIn = null, lastOut = null;
+    events.forEach(function(ev){
+      if (ev.action === 'clockIn'  && !firstIn) firstIn = ev.ts;
+      if (ev.action === 'clockOut') lastOut = ev.ts;
+    });
+    // Validate chronology — clockOut before clockIn is invalid, drop it
+    if (firstIn && lastOut && lastOut < firstIn) lastOut = null;
+
+    e.clockIn  = firstIn ? toHHMM(firstIn) : null;
+    e.clockOut = lastOut ? toHHMM(lastOut) : null;
+
+    // Status: leave > completed > present > absent
+    if (isOnLeaveToday(e.id)) {
+      e.status = 'leave';
+    } else if (!e.clockIn) {
+      e.status = 'absent';
+    } else if (e.clockOut) {
+      e.status = 'completed';
+    } else {
+      e.status = 'present';
+    }
+  });
+}
+
+// Append a clock event to local log immediately (optimistic UI)
+// before the Apps Script round-trip completes
+function appendLocalClockEvent(empId, name, action, method) {
+  if (!Array.isArray(attendanceLog)) attendanceLog = [];
+  var nowIso = new Date().toISOString();
+  var clockedBy = (currentUser && (currentUser.empId || currentUser.loginId || currentUser.name)) || 'unknown';
+  attendanceLog.push({
+    timestamp: nowIso,
+    date: todayKey(),
+    empId: empId,
+    name: name || '',
+    action: action,
+    method: method || '',
+    clockedBy: clockedBy
   });
 }
 
@@ -2155,29 +2328,10 @@ function fetchAttendanceFromSheets() {
 // Does NOT touch the Attendance Log in Sheets — that's salary data and remains intact.
 // Called on app load and after every Sheet pull, before re-rendering.
 function resetStaleClockState() {
-  if (!Array.isArray(employees) || employees.length === 0) return;
-  var todayYMD = (typeof fmtLaoYMD === 'function') ? fmtLaoYMD(new Date()) : '';
-  if (!todayYMD) return;
-  employees.forEach(function(e){
-    var inYMD = e.clockIn ? ((typeof fmtLaoYMD === 'function') ? fmtLaoYMD(e.clockIn) : '') : '';
-    // 🆕 FIX v4: Only clear when we're CERTAIN it's from a different day.
-    // The "unparseable" branch was wiping valid HH:MM strings from today.
-    // If clockIn looks like an Excel epoch leak ("1899-12-30..."), parseLaoTime
-    // already returns null for years < 1990, so inYMD will be ''.
-    // For pure "HH:MM" values, parseLaoTime constructs today's date — so
-    // inYMD will equal todayYMD and we keep it.
-    if (e.clockIn && inYMD && inYMD !== todayYMD) {
-      e.clockIn  = null;
-      e.clockOut = null;
-      if (e.status === 'present') e.status = 'absent';
-    }
-    // Excel epoch leak: clockIn looks like a date string but parses to pre-1990
-    else if (e.clockIn && typeof e.clockIn === 'string' && /^\d{4}-\d{2}-\d{2}/.test(e.clockIn) && !inYMD) {
-      e.clockIn  = null;
-      e.clockOut = null;
-      if (e.status === 'present') e.status = 'absent';
-    }
-  });
+  // 🆕 v6: no-op. Stale state is impossible because clockIn/clockOut/status
+  //    are now always derived from today's events in attendanceLog.
+  //    Yesterday's events are simply not in "today's" group.
+  return;
 }
 
 // ===================== RENDER ALL =====================
@@ -2207,8 +2361,9 @@ function renderAll() {
 // ===================== DASHBOARD =====================
 function renderDashboard() {
   document.getElementById('dash-date').textContent = new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-  var present = employees.filter(function(e){ return e.status==='present'; }).length;
-  var absent  = employees.filter(function(e){ return e.status!=='present'; }).length;
+  // 🆕 FIX v5: count present + completed as "showed up" — only no-clockIn counts as absent
+  var present = employees.filter(function(e){ return e.status==='present' || e.status==='completed'; }).length;
+  var absent  = employees.filter(function(e){ return e.status==='absent'; }).length;
   var pending = leaveRequests.filter(function(r){ return r.status==='pending'; }).length;
   document.getElementById('s-total').textContent   = employees.length;
   document.getElementById('s-present').textContent = present;
@@ -2216,7 +2371,11 @@ function renderDashboard() {
   document.getElementById('s-pending').textContent = pending;
 
   document.getElementById('dash-att').innerHTML = employees.map(function(e){
-    var sb = e.status==='present'?'bg-gr':e.status==='leave'?'bg-or':'bg-re';
+    // 🆕 FIX v5: support 'completed' status (clocked in AND out) with distinct blue badge
+    var sb = e.status==='present'   ? 'bg-gr'
+           : e.status==='completed' ? 'bg-bl'
+           : e.status==='leave'     ? 'bg-or'
+           : 'bg-re';
     return '<tr><td><div class="erow"><div class="eav" style="background:'+e.color+'">'+inits(e.name)+'</div>'+e.name+'</div></td><td><span class="badge bg-gray">'+roleName(e.role)+'</span></td><td style="font-family:monospace">'+(e.clockIn||'--')+'</td><td><span class="badge '+sb+'">'+e.status+'</span></td></tr>';
   }).join('');
 
@@ -2242,8 +2401,15 @@ function renderDashboard() {
 function renderEmployees(list) {
   document.getElementById('emp-grid').innerHTML = list.map(function(e){
     var days = Math.max(0,Math.floor((new Date(e.contractEnd)-new Date())/86400000));
-    var sc = e.status==='present'?'present':e.status==='leave'?'leave':'absent';
-    var sb = e.status==='present'?'bg-gr':e.status==='leave'?'bg-or':'bg-re';
+    // 🆕 FIX v5: support 'completed' status (clocked in AND out)
+    var sc = e.status==='present'   ? 'present'
+           : e.status==='completed' ? 'completed'
+           : e.status==='leave'     ? 'leave'
+           : 'absent';
+    var sb = e.status==='present'   ? 'bg-gr'
+           : e.status==='completed' ? 'bg-bl'
+           : e.status==='leave'     ? 'bg-or'
+           : 'bg-re';
     var photoHtml = e.photo
       ? '<div class="ecard-photo" style="background-image:url('+e.photo+');background-size:cover;background-position:center;"></div>'
       : '<div class="ecard-photo" style="background:'+e.color+'">'+inits(e.name)+'</div>';
@@ -2260,6 +2426,11 @@ function openEmployee(id) {
   var e = null;
   for(var i=0;i<employees.length;i++){ if(employees[i].id===id){ e=employees[i]; break; } }
   if(!e) return;
+
+  // 🆕 Track which employee the profile modal is showing (for attendance log lookups)
+  window.currentProfileEmpId = id;
+  // 🆕 Pull latest attendance log so the Attendance tab renders real records
+  if (typeof fetchAttendanceLog === 'function') fetchAttendanceLog();
 
   // set printEmployee FIRST so all render functions can access it
   printEmployee = e;
@@ -2279,7 +2450,10 @@ function openEmployee(id) {
     document.getElementById('m-sub').textContent  = roleName(e.role)+' · #'+e.id;
 
     // profile tab — editable for owner/manager, read-only for employee
-    var sb = e.status==='present'?'bg-gr':e.status==='leave'?'bg-or':'bg-re';
+    var sb = e.status==='present'   ? 'bg-gr'
+           : e.status==='completed' ? 'bg-bl'
+           : e.status==='leave'     ? 'bg-or'
+           : 'bg-re';
     var saveRow = document.getElementById('mp-profile-save-row');
     if(isOwner||isManager){
       // EDITABLE
@@ -2901,6 +3075,11 @@ function renderAttendanceTab(e) {
   if(netColHd) netColHd.style.display = (vis.netPay||vis.deductions) ? '' : 'none';
 
   var tbody = document.getElementById('mp-att-rows'); if(!tbody) return;
+  // 🆕 Level 1: render real attendance from log if any exists
+  if (Array.isArray(attendanceLog) && attendanceLog.length > 0) {
+    renderEmployeeAttendance();
+    return;
+  }
   // 🆕 Show friendly empty state when no attendance records exist
   if (!demoRows || demoRows.length === 0) {
     var colspan = 5 + (vis.overtime?1:0) + ((vis.netPay||vis.deductions)?1:0);
@@ -4539,7 +4718,7 @@ function recruitStep1Html() {
   var PROVINCES = ['Vientiane Capital','Vientiane Province','Luang Prabang','Savannakhet','Champasak','Xieng Khouang','Huaphanh','Luang Namtha','Oudomxay','Phongsali','Bokeo','Bolikhamxay','Khammouan','Saravan','Sekong','Attapeu','Xayabouri','Other'];
   return '<div style="font-size:12px;color:var(--g400);margin-bottom:14px;padding:8px 12px;background:#FEF3E7;border-radius:8px;border-left:3px solid var(--or)"><span class="bi"><span class="bi-en">Step 1 of 4 — Fill in personal information</span><span class="bi-lo">ຂັ້ນຕອນທີ 1 ຈາກ 4 — ຕື່ມຂໍ້ມູນສ່ວນຕົວ</span></span></div>'
     + rRow([
-        rFG('Full Name (EN)','ຊື່ເຕັມ (ອັງກິດ)','r-name-en','text','e.g. Noy Vongkhamphanh'),
+        rFG('Full Name (EN)','ຊື່ເຕັມ (ອັງກິດ)','r-name-en','text','First Last'),
         rFG('Full Name (ລາວ)','ຊື່ເຕັມ (ລາວ)','r-name-lo','text','ນ.ນ. ວົງຄຳພັນ')
       ])
     + rRow([
@@ -5092,11 +5271,23 @@ function doClock(method) {
   // update employee record
   var emp = employees.find(function(e){ return e.id===currentUser.empId; });
   if (emp) {
-    if (!clockedIn) { emp.clockIn=now; emp.status='present'; markEmpPending(emp.id, {clockIn:now, status:'present', clockOut:null}); }
-    else            { emp.clockOut=now; markEmpPending(emp.id, {clockOut:now}); }
+    if (!clockedIn) {
+      // 🆕 v6: validate chronology not needed for clock-in (no prior event for today guarantees it's first)
+      // No mutation of emp — just push event
+    } else {
+      // 🆕 v6: validate chronology — refuse clock-out if it would be before clock-in
+      var inMin  = timeStrToMinutes(emp.clockIn);
+      var outMin = timeStrToMinutes(now);
+      if (inMin !== null && outMin !== null && outMin < inMin) {
+        toast('⚠️ Clock-out time is before your clock-in. Please contact your manager.');
+        return;
+      }
+    }
   }
-  // push to Sheets
+  // 🆕 v6: push event to log (server) + optimistic local append + rehydrate
   var pushAction = clockedIn ? 'clockOut' : 'clockIn';
+  appendLocalClockEvent(currentUser.empId, currentUser.name, pushAction, method);
+  hydrateEmployeesFromLog();
   pushClock(pushAction, currentUser.empId, currentUser.name, method);
   clockedIn = !clockedIn;
   // update button
@@ -5119,24 +5310,29 @@ function doClock(method) {
 function manualClock(empId) {
   var e = null; for(var i=0;i<employees.length;i++){ if(employees[i].id===empId){ e=employees[i]; break; } }
   if(!e) return;
-  // 🆕 Toggle: if not present yet → clock IN, if already present → clock OUT
-  var now=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-  var isCurrentlyClockedIn = (e.status === 'present' && e.clockIn && !e.clockOut);
-  if (isCurrentlyClockedIn) {
-    e.clockOut = now;
-    pushClock('clockOut', empId, e.name, 'manual'); // 🆕 sync to Sheet
-    markEmpPending(empId, { clockOut: now }); // 🆕 protect local change for 15s
-    logEvent('clock','Manual clock-out','Manager clocked out '+e.name+' at '+now,'warning');
-    toast('Manual clock-out for '+e.name+' at '+now);
-  } else {
-    e.clockIn = now;
-    e.clockOut = null;
-    e.status = 'present';
-    pushClock('clockIn', empId, e.name, 'manual'); // 🆕 sync to Sheet
-    markEmpPending(empId, { clockIn: now, clockOut: null, status: 'present' }); // 🆕 protect 15s
-    logEvent('clock','Manual clock-in','Manager clocked in '+e.name+' at '+now,'warning');
-    toast('Manual clock-in for '+e.name+' at '+now);
+  // 🆕 v6: derive current state from log (e.clockIn/Out are hydrated)
+  var now = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  var isCurrentlyClockedIn = (e.clockIn && !e.clockOut);
+  var action = isCurrentlyClockedIn ? 'clockOut' : 'clockIn';
+
+  if (action === 'clockOut') {
+    // Validate chronology before recording clock-out
+    var inMin  = timeStrToMinutes(e.clockIn);
+    var outMin = timeStrToMinutes(now);
+    if (inMin !== null && outMin !== null && outMin < inMin) {
+      toast('⚠️ Cannot clock out '+e.name+' — current time ('+now+') is before clock-in ('+e.clockIn+').');
+      return;
+    }
   }
+
+  // 🆕 v6: push event + optimistic local append + rehydrate (no direct emp mutation)
+  appendLocalClockEvent(empId, e.name, action, 'manual');
+  hydrateEmployeesFromLog();
+  pushClock(action, empId, e.name, 'manual');
+  logEvent('clock', action==='clockOut'?'Manual clock-out':'Manual clock-in',
+           'Manager '+(action==='clockOut'?'clocked out ':'clocked in ')+e.name+' at '+now,'warning');
+  toast((action==='clockOut'?'Manual clock-out':'Manual clock-in')+' for '+e.name+' at '+now);
+
   renderClockIn(); renderDashboard();
 }
 
@@ -6106,19 +6302,10 @@ function deleteTask(id) {
 
 // ===================== KPI =====================
 function seedKpiData() {
-  var now = new Date();
+  // 🆕 Random KPI generator removed — real KPI data comes from getSubmissions API only.
+  // Each employee's kpiData[empId] is initialized empty and populated by real submissions.
   employees.forEach(function(e) {
-    kpiData[e.id] = [];
-    for (var i=0; i<30; i++) {
-      var d = new Date(now - i*86400000);
-      var pct = Math.floor(Math.random()*35)+65;
-      kpiData[e.id].push({
-        date: d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}),
-        pct: pct, submitted: true,
-        done: Math.round(pct*checklistTasks.length/100),
-        total: checklistTasks.length
-      });
-    }
+    if (!kpiData[e.id]) kpiData[e.id] = [];
   });
 }
 
@@ -6320,7 +6507,13 @@ function pullAllFromSheets(cb, silent) {
   if (!SHEET_URL) { if(cb) cb(); return; }
   if(!silent) showSaveStatus('syncing');
   var done = 0;
-  function tick(){ done++; if(done>=2){ if(!silent) showSaveStatus('synced'); if(cb) cb(); } }
+  // 🆕 v6: 3 critical pulls now (employees, leave, attendanceLog)
+  function tick(){ done++; if(done>=3){
+    // 🆕 v6: hydrate clock state from log AFTER all data is in
+    if (typeof hydrateEmployeesFromLog === 'function') hydrateEmployeesFromLog();
+    if(!silent) showSaveStatus('synced');
+    if(cb) cb();
+  } }
 
   // 1. employees + accounts
   apiPost({action:'getEmployees'}, function(d){
@@ -6342,6 +6535,12 @@ function pullAllFromSheets(cb, silent) {
   // 2. leave requests
   apiPost({action:'getLeaveRequests'}, function(d){
     if(d && d.ok && d.requests && d.requests.length>0) leaveRequests = d.requests;
+    tick();
+  }, true);
+
+  // 🆕 v6: 3. attendance log — source of truth for clock state
+  apiPost({action:'getAttendanceLog'}, function(d){
+    if(d && d.ok && Array.isArray(d.log)) attendanceLog = d.log;
     tick();
   }, true);
 
@@ -6390,7 +6589,126 @@ function pushLeaveStatus(id, status, approver) {
 // ---- PUSH: CLOCK IN/OUT ----
 function pushClock(action, empId, name, method) {
   if (!SHEET_URL) return;
-  apiPost({action:action, empId:empId, name:name, method:method||''}, null, true);
+  // 🆕 Level 1 audit: full timestamp + who initiated this clock event
+  var nowIso = new Date().toISOString();
+  var clockedBy = (currentUser && (currentUser.empId || currentUser.loginId || currentUser.name)) || 'unknown';
+  apiPost({
+    action: action,
+    empId: empId,
+    name: name,
+    method: method || '',
+    timestamp: nowIso,
+    clockedBy: clockedBy
+  }, null, true);
+}
+
+// ---- LEVEL 1 ATTENDANCE AUDIT LOG ----
+var attendanceLog = []; // [{timestamp, date, empId, name, action, method, clockedBy}, ...]
+
+function fetchAttendanceLog(cb) {
+  if (!SHEET_URL) { if(cb) cb(); return; }
+  apiPost({action:'getAttendanceLog'}, function(d){
+    if (d && d.ok && Array.isArray(d.log)) {
+      attendanceLog = d.log;
+      // 🆕 v6: rebuild employee clock state from log every fetch
+      hydrateEmployeesFromLog();
+      // Re-render any visible audit views
+      renderActivityLog();
+      var prof = document.getElementById('mp-att-rows');
+      if (prof && prof.offsetParent) renderEmployeeAttendance();
+      // 🆕 v6: refresh the dashboard if it's showing
+      var active = document.querySelector('.view.active');
+      if (active && active.id === 'view-dashboard') renderDashboard();
+      if (active && active.id === 'view-clockin')   renderClockIn();
+      if (active && active.id === 'view-employees') renderEmployees(employees);
+    }
+    if (cb) cb();
+  }, true);
+}
+
+// Render the Activity Log card (raw events). Owner & manager only.
+function renderActivityLog() {
+  var el = document.getElementById('activity-log-rows'); if (!el) return;
+  if (!attendanceLog.length) {
+    el.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--g400);font-size:12px;font-style:italic">No clock events yet — events will appear here as staff clock in</td></tr>';
+    return;
+  }
+  // Sort newest first, take latest 50
+  var rows = attendanceLog.slice().sort(function(a,b){
+    return new Date(b.timestamp||0) - new Date(a.timestamp||0);
+  }).slice(0, 50);
+  el.innerHTML = rows.map(function(r){
+    var ts = r.timestamp ? new Date(r.timestamp) : null;
+    var dateStr = ts ? (ts.getFullYear()+'-'+('0'+(ts.getMonth()+1)).slice(-2)+'-'+('0'+ts.getDate()).slice(-2)) : (r.date||'—');
+    var timeStr = ts ? (function(){
+      var h=ts.getHours(), m=('0'+ts.getMinutes()).slice(-2);
+      var ap = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12;
+      return h+':'+m+' '+ap;
+    })() : '—';
+    var actionBadge = r.action==='clockIn'
+      ? '<span class="badge bg-gr" style="font-size:10px">in</span>'
+      : '<span class="badge bg-bl" style="font-size:10px">out</span>';
+    var methodBadge = '<span class="badge bg-gy" style="font-size:10px">'+(r.method||'—')+'</span>';
+    var byText = r.clockedBy && r.clockedBy !== r.empId
+      ? '<span style="color:var(--re);font-size:11px">by '+r.clockedBy+'</span>'
+      : '<span style="color:var(--g400);font-size:11px">self</span>';
+    return '<tr>'+
+      '<td style="font-family:monospace;font-size:11px">'+dateStr+'</td>'+
+      '<td style="font-family:monospace;font-size:11px;color:var(--or)">'+timeStr+'</td>'+
+      '<td style="font-size:12px">'+(r.name||r.empId||'—')+'</td>'+
+      '<td>'+actionBadge+'</td>'+
+      '<td>'+methodBadge+'</td>'+
+      '<td>'+byText+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+// Render a real per-employee attendance table inside the profile modal
+function renderEmployeeAttendance() {
+  var tbody = document.getElementById('mp-att-rows'); if (!tbody) return;
+  if (!window.currentProfileEmpId) return;
+  var empId = window.currentProfileEmpId;
+  // Get this employee's events for the current attendance month/year
+  var events = attendanceLog.filter(function(r){
+    if (r.empId !== empId) return false;
+    var d = r.timestamp ? new Date(r.timestamp) : (r.date ? new Date(r.date) : null);
+    if (!d) return false;
+    return d.getMonth() === attMonth && d.getFullYear() === attYear;
+  });
+  if (!events.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px 12px;color:var(--g400);font-size:13px;font-style:italic">No attendance records this month<br><span style="font-size:11px">ຍັງບໍ່ມີບັນທຶກໃນເດືອນນີ້</span></td></tr>';
+    return;
+  }
+  // Group events by date — pair clockIn with clockOut
+  var byDate = {};
+  events.forEach(function(r){
+    var d = r.timestamp ? new Date(r.timestamp) : new Date(r.date);
+    var key = d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+    if (!byDate[key]) byDate[key] = { date:key, in:null, out:null };
+    if (r.action === 'clockIn'  && (!byDate[key].in  || d < byDate[key].in))  byDate[key].in  = d;
+    if (r.action === 'clockOut' && (!byDate[key].out || d > byDate[key].out)) byDate[key].out = d;
+  });
+  var rows = Object.keys(byDate).sort().reverse().map(function(k){ return byDate[k]; });
+  function fmt(d){
+    if (!d) return '—';
+    var h=d.getHours(), m=('0'+d.getMinutes()).slice(-2);
+    var ap = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12;
+    return h+':'+m+' '+ap;
+  }
+  tbody.innerHTML = rows.map(function(r){
+    var hours = (r.in && r.out) ? (((r.out - r.in)/3600000).toFixed(1)+'h') : '—';
+    var status = r.in ? 'present' : 'absent';
+    var badge = r.in ? 'bg-gr' : 'bg-re';
+    return '<tr>'+
+      '<td style="font-size:12px">'+r.date+'</td>'+
+      '<td style="font-family:monospace;font-size:12px">'+fmt(r.in)+'</td>'+
+      '<td style="font-family:monospace;font-size:12px">'+fmt(r.out)+'</td>'+
+      '<td style="font-size:12px">'+hours+'</td>'+
+      '<td style="font-size:12px">—</td>'+
+      '<td style="font-size:12px">—</td>'+
+      '<td><span class="badge '+badge+'" style="font-size:10px">'+status+'</span></td>'+
+    '</tr>';
+  }).join('');
 }
 
 // ---- PUSH: CHECKLIST SUBMIT ----
@@ -6453,6 +6771,8 @@ function startAutoSave() {
       if(id==='leave')     renderLeaveView();
       if(id==='dashboard') { renderDashboard(); updateLeaveBadge(); }
       if(id==='schedule')  renderScheduleView();
+      // 🆕 Level 1 audit: pull attendance log when on attendance view
+      if(id==='attendance') fetchAttendanceLog();
       updateLeaveBadge();
       showSyncDot('green');
     });
@@ -8980,27 +9300,10 @@ function exportCSV() {
 }
 
 // ===================== ACTIVITY LOG =====================
+// 🆕 Demo data fully removed — real events come from logEvent() calls only.
 function seedDemoLog() {
-  var now=new Date();
-  function past(h,m){ return new Date(now-(h*3600000)-((m||0)*60000)); }
-  var events=[
-    {type:'login',    action:'User login',          detail:'kiko logged in as owner',                    result:'success', user:'Kiko',               ts:past(0,5)  },
-    {type:'login',    action:'User login',          detail:'noy logged in as manager',                   result:'success', user:'Noy Vongkhamphanh',  ts:past(0,20) },
-    {type:'clock',    action:'<span class=\"bi\"><span class=\"bi-en\">Clock In</span><span class=\"bi-lo\">ເຂົ້າວຽກ</span></span>',            detail:'Noy - GPS+QR - 07:55',                       result:'success', user:'Noy Vongkhamphanh',  ts:past(1,5)  },
-    {type:'clock',    action:'<span class=\"bi\"><span class=\"bi-en\">Clock In</span><span class=\"bi-lo\">ເຂົ້າວຽກ</span></span>',            detail:'Malee - QR+GPS - 08:10',                     result:'success', user:'Malee Soukhavong',    ts:past(1)    },
-    {type:'clock',    action:'Clock In failed',     detail:'Unknown device - invalid QR code',           result:'failed',  user:'Unknown',             ts:past(1,30) },
-    {type:'clock',    action:'<span class=\"bi\"><span class=\"bi-en\">Clock In</span><span class=\"bi-lo\">ເຂົ້າວຽກ</span></span>',            detail:'Kham - GPS - 08:05',                         result:'success', user:'Kham Sivilay',        ts:past(2)    },
-    {type:'leave',    action:'Leave request',       detail:'Noy applied: Annual Leave Apr 15-17',        result:'success', user:'Noy Vongkhamphanh',  ts:past(3)    },
-    {type:'leave',    action:'Leave request',       detail:'Somchai applied: Sick Leave Apr 12',         result:'success', user:'Somchai Phetsavang',  ts:past(4)    },
-    {type:'approval', action:'Leave approved',      detail:'Ping Emergency leave approved',              result:'success', user:'Noy Vongkhamphanh',  ts:past(5)    },
-    {type:'edit',     action:'Employee added',      detail:'Daeng Chansamone (MM008) added',             result:'success', user:'Kiko',               ts:past(6)    },
-    {type:'system',   action:'QR Code regenerated', detail:'Daily QR code refreshed',                   result:'success', user:'Kiko',               ts:past(8)    },
-    {type:'import',   action:'Excel import',        detail:'3 employees imported from spreadsheet',      result:'success', user:'Kiko',               ts:past(24)   },
-    {type:'login',    action:'Login failed',        detail:'Wrong password attempt',                     result:'failed',  user:'Unknown',             ts:past(30)   },
-    {type:'edit',     action:'Contract signed',     detail:'Contract for Malee signed by Noy',          result:'success', user:'Noy Vongkhamphanh',  ts:past(26)   }
-  ];
-  events.forEach(function(ev){ activityLog.push({ id:activityLog.length+1, timestamp:ev.ts, type:ev.type, action:ev.action, detail:ev.detail, result:ev.result, user:ev.user }); });
-  activityLog.sort(function(a,b){ return new Date(b.timestamp)-new Date(a.timestamp); });
+  // No-op. Activity log is populated only by real user actions via logEvent().
+  return;
 }
 
 function renderLog() {
