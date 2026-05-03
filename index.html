@@ -2209,13 +2209,19 @@ function todayKey() {
   return y+'-'+m+'-'+dd;
 }
 
-// Format a Date or ISO string to "HH:MM"
+// Format a Date or ISO string to "HH:MM" in Lao timezone (independent of device tz)
 function toHHMM(t) {
   if (!t) return null;
   var d = (t instanceof Date) ? t : new Date(t);
   if (isNaN(d.getTime())) return null;
   if (d.getFullYear() < 1990) return null;
-  return ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
+  // 🆕 v6.2: ALWAYS extract HH:MM in Lao timezone (UTC+7), regardless of device timezone.
+  //    Without this, a Mac set to Pacific time would show "7:55 AM" as "12:55 AM"
+  //    and our 18:21 PM clock-in could appear as "11:21 AM" elsewhere.
+  var laoOffset = 7 * 60;
+  var localOffset = d.getTimezoneOffset();
+  var dLao = new Date(d.getTime() + (laoOffset + localOffset) * 60000);
+  return ('0'+dLao.getHours()).slice(-2) + ':' + ('0'+dLao.getMinutes()).slice(-2);
 }
 
 // Check whether an employee is on approved leave for today
@@ -2966,13 +2972,19 @@ function fmtLaoFull(input, opts) {
   opts = opts || {};
   var d = parseLaoTime(input);
   if (!d) return '—';
+  // 🆕 v6.2: Always present in Lao timezone (UTC+7), regardless of device tz.
+  //    Otherwise an ISO timestamp like "07:55:00+07:00" would render as
+  //    "5:55 PM" on a Pacific-time Mac.
+  var laoOffset = 7 * 60;
+  var localOffset = d.getTimezoneOffset();
+  var dLao = new Date(d.getTime() + (laoOffset + localOffset) * 60000);
   var days  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var mons  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var datePart = days[d.getDay()] + ' ' + mons[d.getMonth()] + ' ' + d.getDate() + ' ' + d.getFullYear();
-  var h = d.getHours();
+  var datePart = days[dLao.getDay()] + ' ' + mons[dLao.getMonth()] + ' ' + dLao.getDate() + ' ' + dLao.getFullYear();
+  var h = dLao.getHours();
   var ampm = h >= 12 ? 'PM' : 'AM';
   h = h % 12; if (h === 0) h = 12;
-  var m = ('0' + d.getMinutes()).slice(-2);
+  var m = ('0' + dLao.getMinutes()).slice(-2);
   var timePart = h + ':' + m + ' ' + ampm;
   if (opts.onlyTime) return timePart;
   if (opts.onlyDate) return datePart;
@@ -6639,9 +6651,16 @@ function renderActivityLog() {
   }).slice(0, 50);
   el.innerHTML = rows.map(function(r){
     var ts = r.timestamp ? new Date(r.timestamp) : null;
-    var dateStr = ts ? (ts.getFullYear()+'-'+('0'+(ts.getMonth()+1)).slice(-2)+'-'+('0'+ts.getDate()).slice(-2)) : (r.date||'—');
-    var timeStr = ts ? (function(){
-      var h=ts.getHours(), m=('0'+ts.getMinutes()).slice(-2);
+    // 🆕 v6.2: convert ts to Lao timezone for display
+    var tsLao = null;
+    if (ts) {
+      var laoOffset = 7 * 60;
+      var localOffset = ts.getTimezoneOffset();
+      tsLao = new Date(ts.getTime() + (laoOffset + localOffset) * 60000);
+    }
+    var dateStr = tsLao ? (tsLao.getFullYear()+'-'+('0'+(tsLao.getMonth()+1)).slice(-2)+'-'+('0'+tsLao.getDate()).slice(-2)) : (r.date||'—');
+    var timeStr = tsLao ? (function(){
+      var h=tsLao.getHours(), m=('0'+tsLao.getMinutes()).slice(-2);
       var ap = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12;
       return h+':'+m+' '+ap;
     })() : '—';
@@ -6691,7 +6710,11 @@ function renderEmployeeAttendance() {
   var rows = Object.keys(byDate).sort().reverse().map(function(k){ return byDate[k]; });
   function fmt(d){
     if (!d) return '—';
-    var h=d.getHours(), m=('0'+d.getMinutes()).slice(-2);
+    // 🆕 v6.2: Use Lao timezone for display
+    var laoOffset = 7 * 60;
+    var localOffset = d.getTimezoneOffset();
+    var dLao = new Date(d.getTime() + (laoOffset + localOffset) * 60000);
+    var h=dLao.getHours(), m=('0'+dLao.getMinutes()).slice(-2);
     var ap = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12;
     return h+':'+m+' '+ap;
   }
