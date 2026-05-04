@@ -762,45 +762,7 @@ input[type=file]{display:none;}
   <div id="schedule-content"></div>
 </div>
 
-<!-- QR MANAGER -->
-<div class="view" id="view-qr">
-  <div class="topbar"><div><div class="page-title"><span class="bi"><span class="bi-en">QR Code Manager</span><span class="bi-lo">ຈັດການ QR Code</span></span></div><div class="page-sub"><span class="bi"><span class="bi-en">Daily clock-in QR code</span><span class="bi-lo">QR ສຳລັບລົງເວລາ</span></span></div></div></div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-    <div class="card">
-      <div class="card-hd"><span class="card-title">MiMi Clock-In QR Code</span><span class="badge bg-gr">Permanent</span></div>
-      <div class="card-bd" style="text-align:center;padding:28px">
-        <div id="qr-print-area">
-          <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--br);margin-bottom:6px">MiMi Restaurant</div>
-          <div style="font-family:'Noto Sans Lao',sans-serif;font-size:11px;color:var(--g400);margin-bottom:16px">ຮ້ານ ມີ່ມີ່ ເຂົ້າປຸ້ນ ແຈ່ວຂີງ</div>
-          <div id="qr-display" style="display:inline-block;padding:14px;background:#fff;border-radius:14px;border:3px solid var(--br);box-shadow:0 4px 16px rgba(74,46,31,.15)"></div>
-          <div style="margin-top:14px">
-            <div style="font-size:14px;color:var(--br);font-weight:600">&#128247; Scan with phone camera</div>
-            <div style="font-family:'Noto Sans Lao',sans-serif;font-size:12px;color:var(--g400);margin-top:4px">ສະແກນເພື່ອລົງເວລາເຂົ້າ-ອອກວຽກ</div>
-            <div style="font-size:11px;color:var(--g400);margin-top:6px;font-family:monospace;background:var(--g50);padding:6px 12px;border-radius:6px;display:inline-block">MIMI-CLOCKIN-2026</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:10px;justify-content:center;margin-top:20px">
-          <button class="btn btn-pr" onclick="window.print()">&#128438; Print QR</button>
-          <button class="btn btn-out" onclick="renderQRImage()">&#8635; Reload</button>
-        </div>
-        <div style="font-size:11px;color:var(--gr);margin-top:12px;font-weight:500">&#10003; Permanent code — print once, use forever</div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Settings</span></div>
-      <div class="card-bd">
-        <div style="margin-bottom:14px">
-          <div style="font-size:13px;font-weight:600;color:var(--br);margin-bottom:4px">GPS Radius</div>
-          <select class="fc" id="gps-radius" style="max-width:200px"><option value="100">100 meters</option><option value="200" selected>200 meters</option><option value="300">300 meters</option><option value="500">500 meters</option></select>
-        </div>
-        <div>
-          <div style="font-size:13px;font-weight:600;color:var(--br);margin-bottom:4px">Security Mode</div>
-          <select class="fc" id="security-mode" style="max-width:240px"><option value="both" selected>QR + GPS (double check)</option><option value="qr">QR only</option><option value="gps">GPS only</option></select>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- QR MANAGER REMOVED in v6.5 — clock-in is GPS-only now -->
 
 <!-- ACTIVITY LOG -->
 <div class="view" id="view-actlog">
@@ -1691,47 +1653,12 @@ function updateLogStats() {
   s('al-s-total',activityLog.length);
 }
 
-// ===================== QR =====================
-function makeQR() {
-  return APP_URL + '?code=MIMI-CLOCKIN-2026';
-}
-
-function regenerateQR() {
-  renderQRImage();
-  toast('QR Code ready!');
-}
-
-function renderQRImage() {
-  var el = document.getElementById('qr-display');
-  if (!el) return;
-  el.innerHTML = '';
-
-  var text = makeQR();
-
-  // QR Server API — free, reliable, no API key needed
-  var src = 'https://api.qrserver.com/v1/create-qr-code/?size=280x280&data='
-            + encodeURIComponent(text)
-            + '&color=4A2E1F&bgcolor=FFFFFF&qzone=2&format=png';
-
-  var img = document.createElement('img');
-  img.src = src;
-  img.width = 280;
-  img.height = 280;
-  img.style.cssText = 'display:block;border-radius:8px;';
-  img.alt = 'MiMi Clock-In QR Code';
-
-  // fallback if no internet
-  img.onerror = function() {
-    el.innerHTML =
-      '<div style="width:260px;padding:22px;border:3px dashed #E8821A;border-radius:12px;background:#FEF3E7;text-align:center">' +
-      '<div style="font-size:13px;color:#9C9588;margin-bottom:10px">&#128247; No internet — show staff this code:</div>' +
-      '<div style="font-family:monospace;font-size:20px;font-weight:700;color:#4A2E1F;letter-spacing:2px;padding:10px;background:#fff;border-radius:8px;border:2px solid #4A2E1F">MIMI-CLOCKIN-2026</div>' +
-      '<div style="font-size:11px;color:#9C9588;margin-top:8px">Staff type this in Clock In → QR tab</div>' +
-      '</div>';
-  };
-
-  el.appendChild(img);
-}
+// ===================== QR REMOVED in v6.5 =====================
+// (Clock-in is GPS-only now. Stub functions kept for backward compatibility
+//  with any old code paths that might still reference them.)
+function makeQR() { return ''; }
+function regenerateQR() { /* no-op */ }
+function renderQRImage() { /* no-op */ }
 
 // ===================== LOGIN =====================
 function setRole(role, el) {
@@ -1858,10 +1785,10 @@ function setupForRole() {
   var navs = {
     owner:   [['dashboard','Dashboard',0],['employees','Employees',0],['recruit','Recruitment',0],['clockin','Clock In/Out',0],
               ['leave','Leave & Holiday',pending],['checklist','Daily Checklist',0],['standardcheck','📋 Standard Check',0],['kpi','KPI Dashboard',0],
-              ['attendance','Attendance Log',0],['schedule','Shift Schedule',0],['qr','QR Manager',0],['actlog','Activity Log',0]],
+              ['attendance','Attendance Log',0],['schedule','Shift Schedule',0],['actlog','Activity Log',0]],
     manager: [['dashboard','Dashboard',0],['employees','Employees',0],['recruit','Recruitment',0],['clockin','Clock In/Out',0],
               ['leave','Leave & Holiday',pending],['checklist','Daily Checklist',0],['standardcheck','📋 Standard Check',0],['kpi','KPI Dashboard',0],
-              ['attendance','Attendance Log',0],['schedule','Shift Schedule',0],['qr','QR Manager',0],['actlog','Activity Log',0]],
+              ['attendance','Attendance Log',0],['schedule','Shift Schedule',0],['actlog','Activity Log',0]],
     employee:[['myhome','🏠 My Home',0],['clockin','Clock In/Out',0],['leave','My Leave',0],['checklist','My Checklist',0],['schedule','My Schedule',0],['actlog','My Activity',0],],
     // 🆕 Checker role: like employee but checking-focused — no leave, has Standard Check view
     checker: [['myhome','🏠 My Home',0],['clockin','Clock In/Out',0],['checklist','My Checklist',0],['standardcheck','📋 Standard Check',0],['schedule','My Schedule',0],['actlog','My Activity',0]]
@@ -1945,7 +1872,7 @@ function showView(id) {
   if(id==='kpi')        renderKPI();
   if(id==='add-emp')    switchAddTab('manual');
   if(id==='attendance') { fetchAttendanceFromSheets(); fetchAttendanceLog(); renderMonthly(); }
-  if(id==='qr')         { renderQRImage(); }
+  if(id==='qr')         { /* QR removed in v6.5 */ }
   if(id==='schedule')   renderScheduleView();
   if(id==='dashboard')  pullAllFromSheets(function(){ renderDashboard(); renderEmployees(employees); updateLeaveBadge(); }, true);
   if(id==='leave')      pullLeaveFromSheets(function(){ renderLeaveView(); });
@@ -2173,6 +2100,17 @@ function computeStatus(e) {
   return 'present';
 }
 
+// 🆕 v6.4: Bilingual status label — returns "<English> / <Lao>"
+function statusLabel(s) {
+  switch(s) {
+    case 'present':   return 'present / ມາວຽກ';
+    case 'completed': return 'completed / ສຳເລັດ';
+    case 'absent':    return 'absent / ຂາດວຽກ';
+    case 'leave':     return 'leave / ລາພັກ';
+    default:          return s || '—';
+  }
+}
+
 // 🆕 Convert "HH:MM" or Date to minutes-of-day (0–1439). null on failure.
 function timeStrToMinutes(v) {
   if (!v) return null;
@@ -2382,7 +2320,7 @@ function renderDashboard() {
            : e.status==='completed' ? 'bg-bl'
            : e.status==='leave'     ? 'bg-or'
            : 'bg-re';
-    return '<tr><td><div class="erow"><div class="eav" style="background:'+e.color+'">'+inits(e.name)+'</div>'+e.name+'</div></td><td><span class="badge bg-gray">'+roleName(e.role)+'</span></td><td style="font-family:monospace">'+(e.clockIn||'--')+'</td><td><span class="badge '+sb+'">'+e.status+'</span></td></tr>';
+    return '<tr><td><div class="erow"><div class="eav" style="background:'+e.color+'">'+inits(e.name)+'</div>'+e.name+'</div></td><td><span class="badge bg-gray">'+roleName(e.role)+'</span></td><td style="font-family:monospace">'+(e.clockIn||'--')+'</td><td><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></td></tr>';
   }).join('');
 
   var pending2 = leaveRequests.filter(function(r){ return r.status==='pending'; });
@@ -2419,7 +2357,7 @@ function renderEmployees(list) {
     var photoHtml = e.photo
       ? '<div class="ecard-photo" style="background-image:url('+e.photo+');background-size:cover;background-position:center;"></div>'
       : '<div class="ecard-photo" style="background:'+e.color+'">'+inits(e.name)+'</div>';
-    return '<div class="ecard" onclick="openEmployee(\''+e.id+'\')"><div class="ecard-top"><div class="ecard-dot '+sc+'"></div>'+photoHtml+'<div class="ecard-name">'+e.name+'</div><div class="ecard-role">'+roleName(e.role)+'</div></div><div class="ecard-body"><div class="emeta"><div class="emeta-item"><div class="emeta-label">Age</div><div class="emeta-val">'+e.age+'</div></div><div class="emeta-item"><div class="emeta-label">From</div><div class="emeta-val" style="font-size:11px">'+e.origin+'</div></div><div class="emeta-item"><div class="emeta-label">Contract</div><div class="emeta-val" style="font-size:11px;color:'+(days<60?'var(--re)':'inherit')+'">'+days+'d</div></div></div><div style="background:var(--g50);border-radius:6px;padding:7px 11px"><span style="font-size:11px;color:var(--g400)">Salary: </span><span style="font-size:12px;font-weight:600;color:var(--br)">'+(e.salary/1000000).toFixed(1)+'M LAK</span></div></div><div class="ecard-foot"><span style="font-size:11px;color:var(--g400);font-family:monospace">#'+e.id+'</span><span class="badge '+sb+'">'+e.status+'</span></div></div>';
+    return '<div class="ecard" onclick="openEmployee(\''+e.id+'\')"><div class="ecard-top"><div class="ecard-dot '+sc+'"></div>'+photoHtml+'<div class="ecard-name">'+e.name+'</div><div class="ecard-role">'+roleName(e.role)+'</div></div><div class="ecard-body"><div class="emeta"><div class="emeta-item"><div class="emeta-label">Age</div><div class="emeta-val">'+e.age+'</div></div><div class="emeta-item"><div class="emeta-label">From</div><div class="emeta-val" style="font-size:11px">'+e.origin+'</div></div><div class="emeta-item"><div class="emeta-label">Contract</div><div class="emeta-val" style="font-size:11px;color:'+(days<60?'var(--re)':'inherit')+'">'+days+'d</div></div></div><div style="background:var(--g50);border-radius:6px;padding:7px 11px"><span style="font-size:11px;color:var(--g400)">Salary: </span><span style="font-size:12px;font-weight:600;color:var(--br)">'+(e.salary/1000000).toFixed(1)+'M LAK</span></div></div><div class="ecard-foot"><span style="font-size:11px;color:var(--g400);font-family:monospace">#'+e.id+'</span><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div></div>';
   }).join('');
 }
 
@@ -2484,7 +2422,7 @@ function openEmployee(id) {
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Phone</span><span class="bi-lo">ເບີໂທ</span></span></label>'+
         '<input class="fc" id="ep-phone" value="'+(e.phone||'')+'"></div>'+
         '</div>'+
-        '<div class="info-item"><label>Status</label><span class="badge '+sb+'">'+e.status+'</span></div>';
+        '<div class="info-item"><label>Status</label><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div>';
 
       document.getElementById('mp-employ').innerHTML =
         '<div class="frow" style="margin-bottom:11px">'+
@@ -2510,7 +2448,7 @@ function openEmployee(id) {
         '<div class="info-item"><label><span class="bi"><span class="bi-en">Age</span><span class="bi-lo">ອາຍຸ</span></span></label><span>'+e.age+' yrs</span></div>'+
         '<div class="info-item"><label>Origin</label><span>'+e.origin+'</span></div>'+
         '<div class="info-item"><label><span class="bi"><span class="bi-en">Religion</span><span class="bi-lo">ສາສະໜາ</span></span></label><span>'+e.religion+'</span></div>'+
-        '<div class="info-item"><label>Status</label><span class="badge '+sb+'">'+e.status+'</span></div>'+
+        '<div class="info-item"><label>Status</label><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div>'+
         '</div>';
       document.getElementById('mp-employ').innerHTML =
         '<div class="info-grid">'+
@@ -5187,24 +5125,12 @@ function renderClockIn() {
       // Format times in Laos local time
       var clockInDisp = e.clockIn ? ((typeof fmtLaoTime === 'function') ? fmtLaoTime(e.clockIn) : e.clockIn) : '—';
       var clockOutDisp = e.clockOut ? ((typeof fmtLaoTime === 'function') ? fmtLaoTime(e.clockOut) : e.clockOut) : '—';
-      return '<tr><td><div class="erow"><div class="eav" style="background:'+e.color+';width:26px;height:26px;font-size:10px">'+inits(e.name)+'</div>'+e.name+'</div></td><td style="font-family:monospace;font-size:12px">'+clockInDisp+'</td><td style="font-family:monospace;font-size:12px;color:'+(clockOutDisp==='—'?'var(--g400)':'var(--br)')+'">'+clockOutDisp+'</td><td><span class="badge '+badgeClass+'" style="font-size:10px">'+displayStatus+'</span></td><td><button class="btn-sm" style="background:var(--g100);color:var(--g600);font-size:10px" onclick="manualClock(\''+e.id+'\')">Manual</button></td></tr>';
+      return '<tr><td><div class="erow"><div class="eav" style="background:'+e.color+';width:26px;height:26px;font-size:10px">'+inits(e.name)+'</div>'+e.name+'</div></td><td style="font-family:monospace;font-size:12px">'+clockInDisp+'</td><td style="font-family:monospace;font-size:12px;color:'+(clockOutDisp==='—'?'var(--g400)':'var(--br)')+'">'+clockOutDisp+'</td><td><span class="badge '+badgeClass+'" style="font-size:10px">'+statusLabel(displayStatus)+'</span></td></tr>';
     }).join('');
-    staffTable = '<div class="card" style="margin-top:16px"><div class="card-hd"><span class="card-title"><span class="bi"><span class="bi-en">Staff Status \u2014 '+todayDate+'</span><span class="bi-lo">ສະຖານະພະນັກງານ \u2014 '+todayDate+'</span></span></span></div><div class="card-bd" style="padding:0"><table class="htable"><thead><tr><th><span class="bi"><span class="bi-en">Employee</span><span class="bi-lo">ພະນັກງານ</span></span></th><th><span class="bi"><span class="bi-en">Clock In</span><span class="bi-lo">ເຂົ້າວຽກ</span></span></th><th><span class="bi"><span class="bi-en">Clock Out</span><span class="bi-lo">ອອກວຽກ</span></span></th><th><span class="bi"><span class="bi-en">Status</span><span class="bi-lo">ສະຖານະ</span></span></th><th>Override</th></tr></thead><tbody>'+statusRows+'</tbody></table></div></div>';
+    staffTable = '<div class="card" style="margin-top:16px"><div class="card-hd"><span class="card-title"><span class="bi"><span class="bi-en">Staff Status \u2014 '+todayDate+'</span><span class="bi-lo">ສະຖານະພະນັກງານ \u2014 '+todayDate+'</span></span></span></div><div class="card-bd" style="padding:0"><table class="htable"><thead><tr><th><span class="bi"><span class="bi-en">Employee</span><span class="bi-lo">ພະນັກງານ</span></span></th><th><span class="bi"><span class="bi-en">Clock In</span><span class="bi-lo">ເຂົ້າວຽກ</span></span></th><th><span class="bi"><span class="bi-en">Clock Out</span><span class="bi-lo">ອອກວຽກ</span></span></th><th><span class="bi"><span class="bi-en">Status</span><span class="bi-lo">ສະຖານະ</span></span></th></tr></thead><tbody>'+statusRows+'</tbody></table></div></div>';
   }
-  document.getElementById('clockin-content').innerHTML = '<div style="max-width:520px;margin:0 auto"><div class="clock-hero"><div class="clock-time" id="ct">--:--:--</div><div class="clock-date" id="cd"></div><div class="cmethod-tabs"><div class="cmethod-tab active" onclick="setCMethod(\'gps\',this)">&#128205; GPS</div><div class="cmethod-tab" onclick="setCMethod(\'qr\',this)">&#128247; QR Scan</div><div class="cmethod-tab" onclick="setCMethod(\'both\',this)">&#128272; QR+GPS</div></div><div class="cmethod-pane active" id="cmp-gps" style="text-align:center"><div class="loc-status"><div class="loc-dot" id="loc-dot"></div><span id="loc-text">Checking location...</span></div><br><button class="clock-bigbtn cbtn-in" id="cbtn" onclick="doClock(\'gps\')">Clock In</button></div><div class="cmethod-pane" id="cmp-qr" style="text-align:center"><p style="color:rgba(255,255,255,.6);font-size:12px;margin-bottom:12px">Scan the QR code at the entrance with your camera, or type the code below</p><input class="qr-input" id="qr-inp" placeholder="MIMI-CLOCKIN-2026" style="margin-bottom:14px;letter-spacing:1px"><br><button class="clock-bigbtn cbtn-in" onclick="doClock(\'qr\')">Clock In with QR</button></div><div class="cmethod-pane" id="cmp-both" style="text-align:center"><div class="loc-status"><div class="loc-dot" id="loc-dot2"></div><span id="loc-text2">Checking GPS...</span></div><input class="qr-input" id="qr-inp2" placeholder="MIMI-CLOCKIN-2026" style="margin:12px 0;letter-spacing:1px"><br><button class="clock-bigbtn cbtn-in" onclick="doClock(\'both\')">Clock In (QR+GPS)</button></div></div><div class="card"><div class="card-hd"><span class="card-title">Today\'s Log</span></div><div class="card-bd"><div id="clock-log" style="font-size:13px;color:var(--g400)">No entries yet today.</div></div></div>'+staffTable+'</div>';
-  // auto-fill QR inputs if code scanned from QR image
-  var urlParams = new URLSearchParams(window.location.search);
-  var scannedCode = urlParams.get('code');
-  if (scannedCode && scannedCode.toUpperCase() === 'MIMI-CLOCKIN-2026') {
-    // switch to QR tab automatically
-    var qrTab = document.querySelector('.cmethod-tab:nth-child(2)');
-    if (qrTab) setCMethod('qr', qrTab);
-    var qi = document.getElementById('qr-inp');
-    var qi2 = document.getElementById('qr-inp2');
-    if (qi) qi.value = scannedCode.toUpperCase();
-    if (qi2) qi2.value = scannedCode.toUpperCase();
-    toast('QR code detected! Tap Clock In.');
-  }
+  document.getElementById('clockin-content').innerHTML = '<div style="max-width:520px;margin:0 auto"><div class="clock-hero"><div class="clock-time" id="ct">--:--:--</div><div class="clock-date" id="cd"></div><div class="cmethod-pane active" id="cmp-gps" style="text-align:center;margin-top:20px"><div class="loc-status"><div class="loc-dot" id="loc-dot"></div><span id="loc-text">Checking location...</span></div><br><button class="clock-bigbtn cbtn-in" id="cbtn" onclick="doClock(\'gps\')">Clock In</button></div></div><div class="card"><div class="card-hd"><span class="card-title">Today\'s Log</span></div><div class="card-bd"><div id="clock-log" style="font-size:13px;color:var(--g400)">No entries yet today.</div></div></div>'+staffTable+'</div>';
+  // 🆕 v6.5: QR auto-fill removed — clock-in is GPS-only
   if (clockTimer) clearInterval(clockTimer);
   clockTimer = setInterval(function(){
     var el=document.getElementById('ct'); if(el) el.textContent=new Date().toLocaleTimeString('en-GB');
@@ -5254,18 +5180,14 @@ function checkGPS() {
 }
 
 function doClock(method) {
-  // --- QR CHECK ---
-  if (method==='qr' || method==='both') {
-    var inp = document.getElementById(method==='qr' ? 'qr-inp' : 'qr-inp2');
-    var entered = inp ? inp.value.trim().toUpperCase() : '';
-    if (entered !== 'MIMI-CLOCKIN-2026') {
-      toast('❌ Wrong QR code! Scan the code at the entrance.');
-      return;
-    }
+  // 🆕 v6.5: Force GPS-only — no more QR or QR+GPS
+  if (method !== 'gps') {
+    toast('❌ Only GPS clock-in is enabled');
+    return;
   }
   // --- GPS CHECK (block if out of range) ---
-  if (method==='gps' || method==='both') {
-    var dotEl = document.getElementById('loc-dot') || document.getElementById('loc-dot2');
+  {
+    var dotEl = document.getElementById('loc-dot');
     if (dotEl && dotEl.classList.contains('bad')) {
       toast('❌ You are too far from MiMi Restaurant. Come to the store to clock in.');
       return;
@@ -5277,17 +5199,31 @@ function doClock(method) {
   }
   // --- RECORD CLOCK IN/OUT ---
   var now = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-  var action = clockedIn ? '<span class=\"bi\"><span class=\"bi-en\">Clock Out</span><span class=\"bi-lo\">ອອກວຽກ</span></span>' : '<span class=\"bi\"><span class=\"bi-en\">Clock In</span><span class=\"bi-lo\">ເຂົ້າວຽກ</span></span>';
-  clockLog.push({action:action, time:now, method:method});
-  logEvent('clock', action, currentUser.name+' via '+method+' at '+now);
-  // update employee record
+
+  // 🆕 v6.3: ONE shift per day — refuse before any server round-trip
   var emp = employees.find(function(e){ return e.id===currentUser.empId; });
   if (emp) {
     if (!clockedIn) {
-      // 🆕 v6: validate chronology not needed for clock-in (no prior event for today guarantees it's first)
-      // No mutation of emp — just push event
+      // Trying to clock IN
+      if (emp.clockIn && emp.clockOut) {
+        toast('✓ You already completed your shift today. See you tomorrow!');
+        return;
+      }
+      if (emp.clockIn && !emp.clockOut) {
+        toast('You\'re already clocked in. Use Clock Out instead.');
+        return;
+      }
     } else {
-      // 🆕 v6: validate chronology — refuse clock-out if it would be before clock-in
+      // Trying to clock OUT
+      if (emp.clockOut) {
+        toast('✓ You already clocked out today.');
+        return;
+      }
+      if (!emp.clockIn) {
+        toast('You haven\'t clocked in yet today.');
+        return;
+      }
+      // Chronology check
       var inMin  = timeStrToMinutes(emp.clockIn);
       var outMin = timeStrToMinutes(now);
       if (inMin !== null && outMin !== null && outMin < inMin) {
@@ -5296,6 +5232,11 @@ function doClock(method) {
       }
     }
   }
+
+  var action = clockedIn ? '<span class=\"bi\"><span class=\"bi-en\">Clock Out</span><span class=\"bi-lo\">ອອກວຽກ</span></span>' : '<span class=\"bi\"><span class=\"bi-en\">Clock In</span><span class=\"bi-lo\">ເຂົ້າວຽກ</span></span>';
+  clockLog.push({action:action, time:now, method:method});
+  logEvent('clock', action, currentUser.name+' via '+method+' at '+now);
+  // update employee record
   // 🆕 v6: push event to log (server) + optimistic local append + rehydrate
   var pushAction = clockedIn ? 'clockOut' : 'clockIn';
   appendLocalClockEvent(currentUser.empId, currentUser.name, pushAction, method);
@@ -5326,6 +5267,12 @@ function manualClock(empId) {
   var now = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
   var isCurrentlyClockedIn = (e.clockIn && !e.clockOut);
   var action = isCurrentlyClockedIn ? 'clockOut' : 'clockIn';
+
+  // 🆕 v6.3: ONE shift per day — refuse if employee already completed today
+  if (action === 'clockIn' && e.clockIn && e.clockOut) {
+    toast('✓ '+e.name+' already completed their shift today.');
+    return;
+  }
 
   if (action === 'clockOut') {
     // Validate chronology before recording clock-out
@@ -6604,6 +6551,8 @@ function pushClock(action, empId, name, method) {
   // 🆕 Level 1 audit: full timestamp + who initiated this clock event
   var nowIso = new Date().toISOString();
   var clockedBy = (currentUser && (currentUser.empId || currentUser.loginId || currentUser.name)) || 'unknown';
+  // 🆕 v6.3: handle server rejection (e.g. "Already clocked in today")
+  //         by rolling back the optimistic local event and showing a toast.
   apiPost({
     action: action,
     empId: empId,
@@ -6611,7 +6560,26 @@ function pushClock(action, empId, name, method) {
     method: method || '',
     timestamp: nowIso,
     clockedBy: clockedBy
-  }, null, true);
+  }, function(resp) {
+    if (resp && resp.ok === false) {
+      // Server refused — undo the optimistic event we just appended locally
+      if (Array.isArray(attendanceLog) && attendanceLog.length > 0) {
+        for (var i = attendanceLog.length - 1; i >= 0; i--) {
+          var ev = attendanceLog[i];
+          if (ev && ev.empId === empId && ev.action === action && ev.timestamp === nowIso) {
+            attendanceLog.splice(i, 1);
+            break;
+          }
+        }
+      }
+      hydrateEmployeesFromLog();
+      // Re-render whichever view is active
+      var active = document.querySelector('.view.active');
+      if (active && active.id === 'view-clockin')   renderClockIn();
+      if (active && active.id === 'view-dashboard') renderDashboard();
+      if (typeof toast === 'function') toast('⚠️ ' + (resp.error || 'Clock action refused by server'));
+    }
+  }, true);
 }
 
 // ---- LEVEL 1 ATTENDANCE AUDIT LOG ----
@@ -6665,8 +6633,8 @@ function renderActivityLog() {
       return h+':'+m+' '+ap;
     })() : '—';
     var actionBadge = r.action==='clockIn'
-      ? '<span class="badge bg-gr" style="font-size:10px">in</span>'
-      : '<span class="badge bg-bl" style="font-size:10px">out</span>';
+      ? '<span class="badge bg-gr" style="font-size:10px">in / ເຂົ້າ</span>'
+      : '<span class="badge bg-bl" style="font-size:10px">out / ອອກ</span>';
     var methodBadge = '<span class="badge bg-gy" style="font-size:10px">'+(r.method||'—')+'</span>';
     var byText = r.clockedBy && r.clockedBy !== r.empId
       ? '<span style="color:var(--re);font-size:11px">by '+r.clockedBy+'</span>'
@@ -8954,7 +8922,7 @@ function rhubSetTab(tab) {
           +'<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--br)">'+e.name+'</div><div style="font-size:11px;color:var(--g400)">#'+e.id+'</div></div>'
           +'<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:'+c+'">'+pct+'%</div>'
           +'<span class="badge '+(sub?'bg-gr':'bg-or')+'" style="font-size:9px">'+(sub?'✅':'⏳')+'</span></div>'
-          +'<span class="badge '+(e.status==='present'?'bg-gr':e.status==='leave'?'bg-or':'bg-re')+'" style="font-size:10px">'+e.status+'</span>'
+          +'<span class="badge '+(e.status==='present'?'bg-gr':e.status==='leave'?'bg-or':'bg-re')+'" style="font-size:10px">'+statusLabel(e.status)+'</span>'
           +'</div>';
       });
       html+='<button onclick="document.getElementById(\'role-hub-overlay\').remove();showView(\'kpi\')" style="width:100%;background:var(--g50);border:1px solid var(--g200);color:var(--br);border-radius:9px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px">→ Full KPI Dashboard</button>';
