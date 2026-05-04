@@ -6758,10 +6758,15 @@ function startAutoSave() {
         showSyncDot('yellow'); // still synced — but skipped re-render
         return;
       }
+      // 🆕 v6.6: re-hydrate from event log every poll so status doesn't
+      //          flicker back to "absent" between cycles.
+      if (typeof hydrateEmployeesFromLog === 'function') hydrateEmployeesFromLog();
       var id = active.id.replace('view-','');
       if(id==='leave')     renderLeaveView();
       if(id==='dashboard') { renderDashboard(); updateLeaveBadge(); }
       if(id==='schedule')  renderScheduleView();
+      if(id==='employees') renderEmployees(employees);
+      if(id==='clockin')   renderClockIn();
       // 🆕 Level 1 audit: pull attendance log when on attendance view
       if(id==='attendance') fetchAttendanceLog();
       updateLeaveBadge();
@@ -6778,6 +6783,9 @@ function startAutoSave() {
       apiPost({action:'getEmployees'}, function(d){
         if(d&&d.ok&&d.employees&&d.employees.length>0){
           employees = mergeEmployeesFromSheet(d.employees);
+          // 🆕 v6.6: re-hydrate status from event log so refresh doesn't
+          //          flicker employees back to "absent" between polls.
+          if (typeof hydrateEmployeesFromLog === 'function') hydrateEmployeesFromLog();
           var active = document.querySelector('.view.active');
           if(!active) return;
           // 🆕 Skip re-render if user is typing (data still in memory)
@@ -6790,6 +6798,7 @@ function startAutoSave() {
           if(id==='dashboard')  renderDashboard();
           if(id==='attendance') renderMonthly();
           if(id==='kpi')        renderKPI();
+          if(id==='clockin')    renderClockIn();
           showSyncDot('green');
         }
       }, true);
@@ -6808,11 +6817,14 @@ function startAutoSave() {
         showSyncDot('yellow');
         return;
       }
+      // 🆕 v6.6: pullAllFromSheets already calls hydrateEmployeesFromLog,
+      //          but we still need to re-render whichever view is active.
       var id = active.id.replace('view-','');
       if(id==='dashboard')  { renderDashboard(); renderEmployees(employees); updateLeaveBadge(); }
       if(id==='employees')  renderEmployees(employees);
       if(id==='attendance') renderMonthly();
       if(id==='leave')      renderLeaveView();
+      if(id==='clockin')    renderClockIn();
       showSyncDot('green');
     }, true);
   }, 60000);
