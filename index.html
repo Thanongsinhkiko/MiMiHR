@@ -6831,10 +6831,14 @@ function startAutoSave() {
   syncTimers.push(slowPoll);
 
   // first pull on login
-  if(SHEET_URL) pullAllFromSheets(function(){
-    renderDashboard(); renderEmployees(employees); updateLeaveBadge();
-    showSyncDot('green');
-  }, true);
+  if(SHEET_URL) {
+    // 🆕 v6.7: load persisted shift types so user edits survive refresh
+    if (typeof fetchShiftTypes === 'function') fetchShiftTypes();
+    pullAllFromSheets(function(){
+      renderDashboard(); renderEmployees(employees); updateLeaveBadge();
+      showSyncDot('green');
+    }, true);
+  }
 }
 
 // small sync indicator dot in sidebar
@@ -8957,6 +8961,31 @@ var SHIFT_OPTIONS = [
   { value:'LEAVE',       label:'Leave',       color:'#F59E0B' },
 ];
 
+// 🆕 v6.7: persist Shift Types via Apps Script so edits survive refresh
+function fetchShiftTypes(cb) {
+  if (!SHEET_URL) { if(cb) cb(); return; }
+  apiPost({ action: 'getShiftTypes' }, function(d){
+    if (d && d.ok && Array.isArray(d.shifts) && d.shifts.length > 0) {
+      SHIFT_OPTIONS = d.shifts.map(function(s){
+        return { value: s.value, label: s.label, color: s.color };
+      });
+    }
+    if (cb) cb();
+  }, true);
+}
+
+function pushShiftTypes() {
+  if (!SHEET_URL) return;
+  var withOrder = SHIFT_OPTIONS.map(function(s, i){
+    return { value: s.value, label: s.label, color: s.color, order: i + 1 };
+  });
+  apiPost({
+    action: 'saveShiftTypes',
+    shifts: JSON.stringify(withOrder),
+    user: (currentUser && currentUser.name) || 'Owner'
+  }, null, true);
+}
+
 function getWeekKey(offset) {
   var d = new Date();
   d.setDate(d.getDate() + offset * 7);
@@ -9713,6 +9742,7 @@ function renderSettings() {
     html += '<div style="display:flex;align-items:center;gap:6px;background:var(--g50);border:1px solid var(--g100);border-radius:8px;padding:6px 10px">'
       + '<span style="width:10px;height:10px;border-radius:50%;background:'+sh.color+';flex-shrink:0;display:inline-block"></span>'
       + '<span style="font-size:12px;font-weight:600;color:var(--br)">'+sh.label+'</span>'
+      + (isOwner2 ? '<span data-sv="'+sh.value+'" onclick="editShiftType(this.dataset.sv)" title="Edit" style="cursor:pointer;color:var(--g400);font-size:12px;margin-left:2px;line-height:1">✏️</span>' : '')
       + (!isFixed && isOwner2 ? '<span data-sv="'+sh.value+'" onclick="deleteShiftType(this.dataset.sv)" style="cursor:pointer;color:var(--g300);font-size:15px;margin-left:2px;line-height:1">×</span>' : '')
       + '</div>';
   });
@@ -9981,8 +10011,43 @@ function addShiftType() {
   var insertIdx = SHIFT_OPTIONS.findIndex(function(s){return s.value==='FULLTIME';});
   if (insertIdx < 0) insertIdx = SHIFT_OPTIONS.length - 2;
   SHIFT_OPTIONS.splice(insertIdx, 0, { value:value, label:label.trim(), color:color });
+  pushShiftTypes(); // 🆕 v6.7: persist
   renderSettings();
   toast('Shift added: '+label.trim());
+}
+
+// 🆕 v6.7: editShiftType — change label + start/end of an existing shift
+function editShiftType(value) {
+  var idx = SHIFT_OPTIONS.findIndex(function(s){return s.value===value;});
+  if (idx < 0) return;
+  var s = SHIFT_OPTIONS[idx];
+  // Don't let users break the special non-time entries
+  if (s.value==='FULLTIME' || s.value==='OFF' || s.value==='LEAVE') {
+    var newLabel = prompt('Edit label:', s.label);
+    if (!newLabel || !newLabel.trim()) return;
+    s.label = newLabel.trim();
+  } else {
+    var newLabel2 = prompt('Edit label:', s.label);
+    if (!newLabel2 || !newLabel2.trim()) return;
+    var parts = (s.value || '').split('-');
+    var defStart = parts[0] || '';
+    var defEnd = parts[1] || '';
+    var newStart = prompt('Start time (e.g. 10:00):', defStart);
+    if (!newStart) return;
+    var newEnd = prompt('End time (e.g. 14:00):', defEnd);
+    if (!newEnd) return;
+    var newValue = newStart.trim()+'-'+newEnd.trim();
+    // Prevent duplicate value
+    if (newValue !== s.value && SHIFT_OPTIONS.find(function(o){return o.value===newValue;})) {
+      toast('Another shift already uses '+newValue);
+      return;
+    }
+    s.label = newLabel2.trim();
+    s.value = newValue;
+  }
+  pushShiftTypes();
+  renderSettings();
+  toast('Shift updated');
 }
 
 function deleteShiftType(value) {
@@ -9990,6 +10055,7 @@ function deleteShiftType(value) {
   if (idx < 0) return;
   if (!confirm('Delete shift: '+SHIFT_OPTIONS[idx].label+'?')) return;
   SHIFT_OPTIONS.splice(idx, 1);
+  pushShiftTypes(); // 🆕 v6.7: persist
   renderSettings();
   toast('Shift deleted');
 }
