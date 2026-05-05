@@ -7119,7 +7119,31 @@ function renderEmployeeAttendance() {
     return h+':'+m+' '+ap;
   }
   tbody.innerHTML = rows.map(function(r){
-    var hours = (r.in && r.out) ? (((r.out - r.in)/3600000).toFixed(1)+'h') : '—';
+    // 🔧 v7.7.3 FIX: hours = (out - in) but guard against:
+    //   - negative (Sheet timestamp drift / log mismatch)
+    //   - missing in (no clock-in)
+    //   - cross-midnight shift (out next day)
+    var hours = '—';
+    if (r.in && r.out) {
+      var diffMs = r.out - r.in;
+      // If diff is negative or absurd (>20h), the in/out pair is bad.
+      // Just show "—" rather than rendering -15.3h gibberish.
+      if (diffMs > 0 && diffMs < 20 * 3600000) {
+        hours = (diffMs / 3600000).toFixed(1) + 'h';
+      } else if (diffMs <= 0) {
+        // Negative — log timestamps are mismatched. Fall back to HH:MM math
+        // using today-pinned dates so cross-midnight (e.g. 11pm → 7am) works.
+        var laoOff = 7 * 60;
+        var locOff = r.in.getTimezoneOffset();
+        var inL  = new Date(r.in.getTime()  + (laoOff + locOff) * 60000);
+        var outL = new Date(r.out.getTime() + (laoOff + locOff) * 60000);
+        var inMin  = inL.getHours()*60  + inL.getMinutes();
+        var outMin = outL.getHours()*60 + outL.getMinutes();
+        if (outMin < inMin) outMin += 24*60;  // crossed midnight
+        var h = (outMin - inMin) / 60;
+        if (h > 0 && h < 20) hours = h.toFixed(1) + 'h';
+      }
+    }
     var status = r.in ? 'present' : 'absent';
     var badge = r.in ? 'bg-gr' : 'bg-re';
     // 🆕 v7.1: Edit/Delete buttons for owner + manager only
