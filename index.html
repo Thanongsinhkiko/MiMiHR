@@ -978,7 +978,7 @@ input[type=file]{display:none;}
         <div class="sec-title"><span class="bi"><span class="bi-en">Attendance Records</span><span class="bi-lo">ບັນທຶກການຂຶ້ນວຽກ</span></span></div>
         <div style="overflow-x:auto">
           <table class="htable" id="att-records-table">
-            <thead><tr><th><span class="bi"><span class="bi-en">Date</span><span class="bi-lo">ວັນທີ</span></span></th><th>In</th><th><span class="bi"><span class="bi-en">Out</span><span class="bi-lo">ອອກ</span></span></th><th><span class="bi"><span class="bi-en">Hours</span><span class="bi-lo">ຊົ່ວໂມງ</span></span></th><th id="att-col-ot">OT/Under</th><th id="att-col-net" style="display:none">Net Day Pay</th><th><span class="bi"><span class="bi-en">Status</span><span class="bi-lo">ສະຖານະ</span></span></th></tr></thead>
+            <thead><tr><th><span class="bi"><span class="bi-en">Date</span><span class="bi-lo">ວັນທີ</span></span></th><th>In</th><th><span class="bi"><span class="bi-en">Out</span><span class="bi-lo">ອອກ</span></span></th><th><span class="bi"><span class="bi-en">Hours</span><span class="bi-lo">ຊົ່ວໂມງ</span></span></th><th id="att-col-ot">OT/Under</th><th id="att-col-net" style="display:none">Net Day Pay</th><th><span class="bi"><span class="bi-en">Status</span><span class="bi-lo">ສະຖານະ</span></span></th><th id="att-col-actions"><span class="bi"><span class="bi-en">Actions</span><span class="bi-lo">ການແກ້ໄຂ</span></span></th></tr></thead>
             <tbody id="mp-att-rows"></tbody>
           </table>
         </div>
@@ -3067,6 +3067,9 @@ function renderAttendanceTab(e) {
   // show per-day net pay if salary visible
   var netColHd = document.getElementById('att-col-net');
   if(netColHd) netColHd.style.display = (vis.netPay||vis.deductions) ? '' : 'none';
+  // 🆕 v7.1: hide Actions column for employees (they can't edit)
+  var actColHd = document.getElementById('att-col-actions');
+  if(actColHd) actColHd.style.display = isEmp ? 'none' : '';
 
   var tbody = document.getElementById('mp-att-rows'); if(!tbody) return;
   // 🆕 Level 1: render real attendance from log if any exists
@@ -6775,6 +6778,20 @@ function renderEmployeeAttendance() {
     var hours = (r.in && r.out) ? (((r.out - r.in)/3600000).toFixed(1)+'h') : '—';
     var status = r.in ? 'present' : 'absent';
     var badge = r.in ? 'bg-gr' : 'bg-re';
+    // 🆕 v7.1: Edit/Delete buttons for owner + manager only
+    var canEdit = currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager');
+    // Pass HH:MM strings (24-hour) for the edit modal so dropdowns prefill correctly
+    function hhmm(d){
+      if (!d) return '';
+      var laoOff = 7 * 60;
+      var locOff = d.getTimezoneOffset();
+      var dL = new Date(d.getTime() + (laoOff + locOff) * 60000);
+      return ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+    }
+    var actionsHtml = canEdit
+      ? '<td style="white-space:nowrap"><button onclick="openAttEditModal(\''+empId+'\',\''+r.date+'\',\''+hhmm(r.in)+'\',\''+hhmm(r.out)+'\',\''+status+'\')" style="background:none;border:1px solid var(--g200);border-radius:6px;padding:3px 7px;font-size:11px;cursor:pointer;color:var(--br);margin-right:3px" title="Edit">✏️</button>'
+        + '<button onclick="confirmDeleteAtt(\''+empId+'\',\''+r.date+'\')" style="background:none;border:1px solid var(--g200);border-radius:6px;padding:3px 7px;font-size:11px;cursor:pointer;color:var(--re)" title="Delete">🗑</button></td>'
+      : '<td></td>';
     return '<tr>'+
       '<td style="font-size:12px">'+r.date+'</td>'+
       '<td style="font-family:monospace;font-size:12px">'+fmt(r.in)+'</td>'+
@@ -6783,8 +6800,153 @@ function renderEmployeeAttendance() {
       '<td style="font-size:12px">—</td>'+
       '<td style="font-size:12px">—</td>'+
       '<td><span class="badge '+badge+'" style="font-size:10px">'+status+'</span></td>'+
+      actionsHtml +
     '</tr>';
   }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🆕 v7.1 — EDIT ATTENDANCE (owner + manager)
+// ═══════════════════════════════════════════════════════════════════
+// Approach C: edit Sheet directly + write Activity Log audit entry.
+// Optimistically apply locally so the table updates before round-trip.
+
+function openAttEditModal(empId, date, inHHMM, outHHMM, status) {
+  // Look up employee name for the modal title
+  var emp = employees.find(function(e){ return e.id === empId; });
+  var name = emp ? emp.name : empId;
+
+  var existing = document.getElementById('att-edit-modal');
+  if (existing) existing.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'att-edit-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:14px;padding:22px;max-width:400px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.25)">'
+    + '<div style="font-size:16px;font-weight:700;color:var(--br);margin-bottom:4px">Edit Attendance / ແກ້ໄຂການລົງເວລາ</div>'
+    + '<div style="font-size:12px;color:var(--g400);margin-bottom:14px">'+name+' — '+date+'</div>'
+    + '<input type="hidden" id="aem-empid" value="'+empId+'">'
+    + '<input type="hidden" id="aem-date" value="'+date+'">'
+    + '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">'
+    +   '<div><label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">Clock In / ເຂົ້າ</label>'
+    +     '<input type="time" id="aem-in" value="'+(inHHMM||'')+'" class="fc" style="width:100%"></div>'
+    +   '<div><label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">Clock Out / ອອກ</label>'
+    +     '<input type="time" id="aem-out" value="'+(outHHMM||'')+'" class="fc" style="width:100%"></div>'
+    +   '<div><label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">Status / ສະຖານະ</label>'
+    +     '<select id="aem-status" class="fc" style="width:100%">'
+    +       '<option value="present"   '+(status==='present'?'selected':'')+'>present / ມາວຽກ</option>'
+    +       '<option value="completed" '+(status==='completed'?'selected':'')+'>completed / ສຳເລັດ</option>'
+    +       '<option value="absent"    '+(status==='absent'?'selected':'')+'>absent / ຂາດວຽກ</option>'
+    +       '<option value="leave"     '+(status==='leave'?'selected':'')+'>leave / ລາພັກ</option>'
+    +     '</select></div>'
+    + '</div>'
+    + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+    +   '<button class="btn btn-out" onclick="document.getElementById(\'att-edit-modal\').remove()">Cancel</button>'
+    +   '<button class="btn btn-pr" onclick="saveAttEdit()">Save</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+}
+
+function saveAttEdit() {
+  var empId = document.getElementById('aem-empid').value;
+  var date  = document.getElementById('aem-date').value;
+  var inT   = document.getElementById('aem-in').value || '';
+  var outT  = document.getElementById('aem-out').value || '';
+  var stat  = document.getElementById('aem-status').value;
+  // Sanity: out must be after in (allowing midnight cross-over only when both set)
+  if (inT && outT) {
+    var ip = inT.split(':');
+    var op = outT.split(':');
+    var inMin  = parseInt(ip[0],10)*60 + parseInt(ip[1],10);
+    var outMin = parseInt(op[0],10)*60 + parseInt(op[1],10);
+    // Allow same time only if user wants to clear hours; warn but allow
+    if (outMin < inMin) {
+      if (!confirm('Clock-out is before clock-in. Save anyway? (treats as midnight crossover)')) return;
+    }
+  }
+  if (!SHEET_URL) { toast('No backend connected'); return; }
+  apiPost({
+    action: 'updateAttendance',
+    empId: empId,
+    date: date,
+    clockIn: inT,
+    clockOut: outT,
+    status: stat,
+    user: (currentUser && currentUser.name) || 'Owner'
+  }, function(d){
+    if (d && d.ok) {
+      // Update local attendanceLog so UI re-renders immediately
+      // Strategy: rebuild the in/out events for that empId+date pair.
+      // Easiest: drop existing same-day events and synthesize new ones from edit.
+      attendanceLog = attendanceLog.filter(function(r){
+        if (r.empId !== empId) return true;
+        var ts = r.timestamp ? new Date(r.timestamp) : (r.date ? new Date(r.date) : null);
+        if (!ts) return true;
+        var laoOff = 7 * 60, locOff = ts.getTimezoneOffset();
+        var dL = new Date(ts.getTime() + (laoOff + locOff) * 60000);
+        var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+        return ymd !== date;
+      });
+      var emp = employees.find(function(e){ return e.id === empId; });
+      var nm = emp ? emp.name : empId;
+      if (inT) {
+        attendanceLog.push({
+          timestamp: date+'T'+inT+':00+07:00',
+          date: date, empId: empId, name: nm, action: 'clockIn',
+          method: 'edit', clockedBy: (currentUser && currentUser.name) || 'Owner'
+        });
+      }
+      if (outT) {
+        attendanceLog.push({
+          timestamp: date+'T'+outT+':00+07:00',
+          date: date, empId: empId, name: nm, action: 'clockOut',
+          method: 'edit', clockedBy: (currentUser && currentUser.name) || 'Owner'
+        });
+      }
+      hydrateEmployeesFromLog();
+      logEvent('edit', 'Attendance edited', empId+' '+date+' — in: '+(inT||'—')+', out: '+(outT||'—')+', status: '+stat);
+      var modal = document.getElementById('att-edit-modal');
+      if (modal) modal.remove();
+      // Re-render the profile attendance table
+      if (typeof renderEmployeeAttendance === 'function') renderEmployeeAttendance();
+      toast('Attendance updated ✓');
+    } else {
+      toast('Update failed: ' + (d && d.error ? d.error : 'unknown'));
+    }
+  }, true);
+}
+
+function confirmDeleteAtt(empId, date) {
+  var emp = employees.find(function(e){ return e.id === empId; });
+  var name = emp ? emp.name : empId;
+  if (!confirm('Delete attendance for '+name+' on '+date+'?\n\nThis is permanent. The Activity Log will keep an audit entry.')) return;
+  if (!SHEET_URL) { toast('No backend connected'); return; }
+  apiPost({
+    action: 'deleteAttendance',
+    empId: empId,
+    date: date,
+    user: (currentUser && currentUser.name) || 'Owner'
+  }, function(d){
+    if (d && d.ok) {
+      // Drop local events for that day too
+      attendanceLog = attendanceLog.filter(function(r){
+        if (r.empId !== empId) return true;
+        var ts = r.timestamp ? new Date(r.timestamp) : (r.date ? new Date(r.date) : null);
+        if (!ts) return true;
+        var laoOff = 7 * 60, locOff = ts.getTimezoneOffset();
+        var dL = new Date(ts.getTime() + (laoOff + locOff) * 60000);
+        var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+        return ymd !== date;
+      });
+      hydrateEmployeesFromLog();
+      logEvent('edit', 'Attendance deleted', empId+' '+date);
+      if (typeof renderEmployeeAttendance === 'function') renderEmployeeAttendance();
+      toast('Attendance deleted ✓');
+    } else {
+      toast('Delete failed: ' + (d && d.error ? d.error : 'unknown'));
+    }
+  }, true);
 }
 
 // ---- PUSH: CHECKLIST SUBMIT ----
