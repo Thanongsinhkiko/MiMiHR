@@ -1058,10 +1058,15 @@ input[type=file]{display:none;}
         <div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
           <button class="btn btn-pr" onclick="printPayslip()">&#128438; Print Payslip</button>
           <button class="btn btn-out" onclick="recordPayment()">&#128181; Record Payment</button>
+          <button class="btn btn-out" onclick="openPersonalExportDialog('csv')" id="btn-personal-csv">📊 <span class="bi"><span class="bi-en">Export CSV</span><span class="bi-lo">ສົ່ງອອກ CSV</span></span></button>
+          <button class="btn btn-out" onclick="openPersonalExportDialog('pdf')" id="btn-personal-pdf">📄 <span class="bi"><span class="bi-en">Export PDF</span><span class="bi-lo">ສົ່ງອອກ PDF</span></span></button>
         </div>
 
         <!-- Payment history -->
-        <div class="sec-title" style="margin-top:18px"><span class="bi"><span class="bi-en">Payment History</span><span class="bi-lo">ປະຫວັດການຈ່າຍ</span></span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;margin-bottom:8px">
+          <div style="font-size:14px;font-weight:700;color:var(--br)"><span class="bi"><span class="bi-en">Payment History</span><span class="bi-lo">ປະຫວັດການຈ່າຍ</span></span></div>
+          <button class="btn btn-out" id="export-payments-btn" onclick="if(printEmployee)exportPaymentHistory(printEmployee.id)" style="font-size:11px;padding:5px 10px">📥 <span class="bi"><span class="bi-en">Export CSV</span><span class="bi-lo">ສົ່ງອອກ</span></span></button>
+        </div>
         <div id="payment-history"></div>
         <div class="sec-title"><span class="bi"><span class="bi-en">Total Paid Since Joining</span><span class="bi-lo">ລວມຈ່າຍຕັ້ງແຕ່ເຂົ້າວຽກ</span></span></div>
         <div id="total-paid-summary" style="background:var(--g50);border-radius:var(--rads);padding:14px 16px;border:1px solid var(--g100)"></div>
@@ -2364,7 +2369,7 @@ function renderDashboard() {
            : e.status==='completed' ? 'bg-bl'
            : e.status==='leave'     ? 'bg-or'
            : 'bg-re';
-    return '<tr><td><div class="erow"><div class="eav" style="background:'+e.color+'">'+inits(e.name)+'</div>'+e.name+'</div></td><td><span class="badge bg-gray">'+roleName(e.role)+'</span></td><td style="font-family:monospace">'+(e.clockIn||'--')+'</td><td><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></td></tr>';
+    return '<tr><td><div class="erow"><div class="eav" style="background:'+escHtml(e.color||'#999')+'">'+escHtml(inits(e.name))+'</div>'+escHtml(e.name)+'</div></td><td><span class="badge bg-gray">'+escHtml(roleName(e.role))+'</span></td><td style="font-family:monospace">'+escHtml(e.clockIn||'--')+'</td><td><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></td></tr>';
   }).join('');
 
   var pending2 = leaveRequests.filter(function(r){ return r.status==='pending'; });
@@ -2401,7 +2406,7 @@ function renderEmployees(list) {
     var photoHtml = e.photo
       ? '<div class="ecard-photo" style="background-image:url('+e.photo+');background-size:cover;background-position:center;"></div>'
       : '<div class="ecard-photo" style="background:'+e.color+'">'+inits(e.name)+'</div>';
-    return '<div class="ecard" onclick="openEmployee(\''+e.id+'\')"><div class="ecard-top"><div class="ecard-dot '+sc+'"></div>'+photoHtml+'<div class="ecard-name">'+e.name+'</div><div class="ecard-role">'+roleName(e.role)+'</div></div><div class="ecard-body"><div class="emeta"><div class="emeta-item"><div class="emeta-label">Age</div><div class="emeta-val">'+e.age+'</div></div><div class="emeta-item"><div class="emeta-label">From</div><div class="emeta-val" style="font-size:11px">'+e.origin+'</div></div><div class="emeta-item"><div class="emeta-label">Contract</div><div class="emeta-val" style="font-size:11px;color:'+(days<60?'var(--re)':'inherit')+'">'+days+'d</div></div></div><div style="background:var(--g50);border-radius:6px;padding:7px 11px"><span style="font-size:11px;color:var(--g400)">Salary: </span><span style="font-size:12px;font-weight:600;color:var(--br)">'+(e.salary/1000000).toFixed(1)+'M LAK</span></div></div><div class="ecard-foot"><span style="font-size:11px;color:var(--g400);font-family:monospace">#'+e.id+'</span><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div></div>';
+    return '<div class="ecard" onclick="openEmployee(\''+escJs(e.id)+'\')"><div class="ecard-top"><div class="ecard-dot '+sc+'"></div>'+photoHtml+'<div class="ecard-name">'+escHtml(e.name)+'</div><div class="ecard-role">'+escHtml(roleName(e.role))+'</div></div><div class="ecard-body"><div class="emeta"><div class="emeta-item"><div class="emeta-label">Age</div><div class="emeta-val">'+escHtml(String(e.age||''))+'</div></div><div class="emeta-item"><div class="emeta-label">From</div><div class="emeta-val" style="font-size:11px">'+escHtml(e.origin||'')+'</div></div><div class="emeta-item"><div class="emeta-label">Contract</div><div class="emeta-val" style="font-size:11px;color:'+(days<60?'var(--re)':'inherit')+'">'+days+'d</div></div></div><div style="background:var(--g50);border-radius:6px;padding:7px 11px"><span style="font-size:11px;color:var(--g400)">Salary: </span><span style="font-size:12px;font-weight:600;color:var(--br)">'+(e.salary/1000000).toFixed(1)+'M LAK</span></div></div><div class="ecard-foot"><span style="font-size:11px;color:var(--g400);font-family:monospace">#'+escHtml(e.id)+'</span><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div></div>';
   }).join('');
 }
 
@@ -2448,15 +2453,15 @@ function openEmployee(id) {
       document.getElementById('mp-personal').innerHTML =
         '<div class="frow" style="margin-bottom:11px">'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Full Name</span><span class="bi-lo">ຊື່ເຕັມ</span></span></label>'+
-        '<input class="fc" id="ep-name" value="'+e.name+'"></div>'+
+        '<input class="fc" id="ep-name" value="'+escHtml(e.name)+'"></div>'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Employee ID</span><span class="bi-lo">ລະຫັດ</span></span></label>'+
-        '<input class="fc" id="ep-id" value="'+e.id+'" style="font-family:monospace" readonly style="opacity:.6"></div>'+
+        '<input class="fc" id="ep-id" value="'+escHtml(e.id)+'" style="font-family:monospace" readonly style="opacity:.6"></div>'+
         '</div>'+
         '<div class="frow" style="margin-bottom:11px">'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Age</span><span class="bi-lo">ອາຍຸ</span></span></label>'+
-        '<input class="fc" id="ep-age" type="number" value="'+e.age+'"></div>'+
+        '<input class="fc" id="ep-age" type="number" value="'+escHtml(String(e.age||''))+'"></div>'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Province</span><span class="bi-lo">ແຂວງ</span></span></label>'+
-        '<input class="fc" id="ep-origin" value="'+(e.origin||'')+'"></div>'+
+        '<input class="fc" id="ep-origin" value="'+escHtml(e.origin||'')+'"></div>'+
         '</div>'+
         '<div class="frow" style="margin-bottom:11px">'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Religion</span><span class="bi-lo">ສາສະໜາ</span></span></label>'+
@@ -2464,22 +2469,22 @@ function openEmployee(id) {
         ['Buddhist','Christian','Animist','Other'].map(function(rel){ return '<option'+(e.religion===rel?' selected':'')+'>'+rel+'</option>'; }).join('')+
         '</select></div>'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Phone</span><span class="bi-lo">ເບີໂທ</span></span></label>'+
-        '<input class="fc" id="ep-phone" value="'+(e.phone||'')+'"></div>'+
+        '<input class="fc" id="ep-phone" value="'+escHtml(e.phone||'')+'"></div>'+
         '</div>'+
         '<div class="info-item"><label>Status</label><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div>';
 
       document.getElementById('mp-employ').innerHTML =
         '<div class="frow" style="margin-bottom:11px">'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px">Role</label>'+
-        '<select class="fc" id="ep-role">'+ROLES.map(function(r){ return '<option value="'+r+'"'+(e.role===r?' selected':'')+'>'+roleName(r)+'</option>'; }).join('')+'</select></div>'+
+        '<select class="fc" id="ep-role">'+ROLES.map(function(r){ return '<option value="'+escHtml(r)+'"'+(e.role===r?' selected':'')+'>'+escHtml(roleName(r))+'</option>'; }).join('')+'</select></div>'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Salary (LAK)</span><span class="bi-lo">ເງິນເດືອນ (ກີບ)</span></span></label>'+
-        '<input class="fc" id="ep-salary" type="number" value="'+e.salary+'"></div>'+
+        '<input class="fc" id="ep-salary" type="number" value="'+escHtml(String(e.salary||''))+'"></div>'+
         '</div>'+
         '<div class="frow">'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Contract Start</span><span class="bi-lo">ເລີ່ມສັນຍາ</span></span></label>'+
-        '<input class="fc" id="ep-cstart" type="date" value="'+(e.contractStart||'')+'"></div>'+
+        '<input class="fc" id="ep-cstart" type="date" value="'+escHtml(e.contractStart||'')+'"></div>'+
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Contract End</span><span class="bi-lo">ໝົດສັນຍາ</span></span></label>'+
-        '<input class="fc" id="ep-cend" type="date" value="'+(e.contractEnd||'')+'"></div>'+
+        '<input class="fc" id="ep-cend" type="date" value="'+escHtml(e.contractEnd||'')+'"></div>'+
         '</div>';
 
       if(saveRow) saveRow.style.display='block';
@@ -2487,21 +2492,21 @@ function openEmployee(id) {
       // READ-ONLY for employee
       document.getElementById('mp-personal').innerHTML =
         '<div class="info-grid">'+
-        '<div class="info-item"><label>Full Name</label><span>'+e.name+'</span></div>'+
-        '<div class="info-item"><label>Employee ID</label><span style="font-family:monospace">'+e.id+'</span></div>'+
-        '<div class="info-item"><label><span class="bi"><span class="bi-en">Age</span><span class="bi-lo">ອາຍຸ</span></span></label><span>'+e.age+' yrs</span></div>'+
-        '<div class="info-item"><label>Origin</label><span>'+e.origin+'</span></div>'+
-        '<div class="info-item"><label><span class="bi"><span class="bi-en">Religion</span><span class="bi-lo">ສາສະໜາ</span></span></label><span>'+e.religion+'</span></div>'+
+        '<div class="info-item"><label>Full Name</label><span>'+escHtml(e.name)+'</span></div>'+
+        '<div class="info-item"><label>Employee ID</label><span style="font-family:monospace">'+escHtml(e.id)+'</span></div>'+
+        '<div class="info-item"><label><span class="bi"><span class="bi-en">Age</span><span class="bi-lo">ອາຍຸ</span></span></label><span>'+escHtml(String(e.age||''))+' yrs</span></div>'+
+        '<div class="info-item"><label>Origin</label><span>'+escHtml(e.origin||'')+'</span></div>'+
+        '<div class="info-item"><label><span class="bi"><span class="bi-en">Religion</span><span class="bi-lo">ສາສະໜາ</span></span></label><span>'+escHtml(e.religion||'')+'</span></div>'+
         '<div class="info-item"><label>Status</label><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div>'+
         '</div>';
       document.getElementById('mp-employ').innerHTML =
         '<div class="info-grid">'+
-        '<div class="info-item"><label>Role</label><span>'+roleName(e.role)+'</span></div>'+
+        '<div class="info-item"><label>Role</label><span>'+escHtml(roleName(e.role))+'</span></div>'+
         '<div class="info-item"><label>Salary</label><span>'+e.salary.toLocaleString()+' LAK</span></div>'+
-        '<div class="info-item"><label><span class="bi"><span class="bi-en">Contract Start</span><span class="bi-lo">ເລີ່ມສັນຍາ</span></span></label><span>'+e.contractStart+'</span></div>'+
-        '<div class="info-item"><label><span class="bi"><span class="bi-en">Contract End</span><span class="bi-lo">ໝົດສັນຍາ</span></span></label><span>'+e.contractEnd+'</span></div>'+
-        '<div class="info-item"><label>Clock In</label><span>'+(e.clockIn||'—')+'</span></div>'+
-        '<div class="info-item"><label>Clock Out</label><span>'+(e.clockOut||'—')+'</span></div>'+
+        '<div class="info-item"><label><span class="bi"><span class="bi-en">Contract Start</span><span class="bi-lo">ເລີ່ມສັນຍາ</span></span></label><span>'+escHtml(e.contractStart||'')+'</span></div>'+
+        '<div class="info-item"><label><span class="bi"><span class="bi-en">Contract End</span><span class="bi-lo">ໝົດສັນຍາ</span></span></label><span>'+escHtml(e.contractEnd||'')+'</span></div>'+
+        '<div class="info-item"><label>Clock In</label><span>'+escHtml(e.clockIn||'—')+'</span></div>'+
+        '<div class="info-item"><label>Clock Out</label><span>'+escHtml(e.clockOut||'—')+'</span></div>'+
         '</div>';
       if(saveRow) saveRow.style.display='none';
     }
@@ -2509,15 +2514,15 @@ function openEmployee(id) {
     // contract tab
     document.getElementById('mp-contract-info').innerHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'+
-      '<div class="cblock"><div class="cblock-label">Type</div><div class="cblock-val">'+(e.contractType||'Fixed Term')+'</div></div>'+
-      '<div class="cblock"><div class="cblock-label">Start</div><div class="cblock-val">'+e.contractStart+'</div></div>'+
-      '<div class="cblock"><div class="cblock-label">End</div><div class="cblock-val">'+e.contractEnd+'</div></div>'+
+      '<div class="cblock"><div class="cblock-label">Type</div><div class="cblock-val">'+escHtml(e.contractType||'Fixed Term')+'</div></div>'+
+      '<div class="cblock"><div class="cblock-label">Start</div><div class="cblock-val">'+escHtml(e.contractStart||'')+'</div></div>'+
+      '<div class="cblock"><div class="cblock-label">End</div><div class="cblock-val">'+escHtml(e.contractEnd||'')+'</div></div>'+
       '</div>'+
       '<div class="cblock"><div class="cblock-label">Monthly Salary</div><div class="cblock-val">'+e.salary.toLocaleString()+' LAK/month</div></div>';
 
     // access tab
     document.getElementById('mp-loginid').textContent = e.loginId||e.id.toLowerCase();
-    document.getElementById('mp-access-level').innerHTML = '<span class="badge '+(e.access==='owner'?'bg-or':e.access==='manager'?'bg-bl':'bg-gy')+'">'+e.access+'</span>';
+    document.getElementById('mp-access-level').innerHTML = '<span class="badge '+(e.access==='owner'?'bg-or':e.access==='manager'?'bg-bl':'bg-gy')+'">'+escHtml(e.access||'')+'</span>';
     document.getElementById('chg-access').value = e.access||'employee';
     populateRoleDropdowns(e.role);
     document.getElementById('chg-cstart').value  = e.contractStart||'';
@@ -2877,36 +2882,295 @@ function formatSize(bytes){
 // ===================== SALARY CALCULATION =====================
 // Standard: 10h/day. Monthly salary = full month of 10h days.
 // Work days in month ≈ 26 (6 days/week). Hourly rate = salary/(26*10)
-function calcSalary(e, attRows) {
-  var base = e.salary||0;
-  var workDays = 26; // standard work days per month
-  var stdHours = 10; // standard hours per day
-  var hourlyRate = base / (workDays * stdHours);
-  var totalHours = 0, otHours = 0, underHours = 0, lateCount = 0;
-  var presentDays = 0;
+// 🆕 v7.4: Detect Part-time role — controls whether pay is monthly or hourly.
+//          Match is case-insensitive, looks for "part-time" or "part time" in role.
+function isPartTime(e) {
+  if (!e || !e.role) return false;
+  var r = String(e.role).toLowerCase();
+  return r.indexOf('part-time') >= 0 || r.indexOf('part time') >= 0 || r.indexOf('parttime') >= 0;
+}
 
-  attRows.forEach(function(r){
-    if(r.status==='present' && r.hoursNum>0){
-      presentDays++;
-      totalHours += r.hoursNum;
-      var diff = r.hoursNum - stdHours;
-      if(diff > 0) otHours += diff;
-      else if(diff < 0) underHours += Math.abs(diff);
+// 🆕 v7.2 — Real salary calc backed by PAYROLL settings + WORK_SCHEDULE +
+//          actual attendanceLog events. Falls back to legacy attRows shape
+//          for any caller that still passes pre-built rows so we don't
+//          break the old code paths.
+//
+// 🆕 v7.4: Part-time branch — when role contains "Part-time", treat
+//          employee.salary as the HOURLY rate. Pay = hourly × actual_hours.
+//          No baseline, no absent deduction.
+//
+// Inputs:
+//   e        — employee object {id, salary, ...}
+//   attRows  — optional legacy array; pass [] to force live-log mode
+//   monthY/M — optional override for attendance month/year (defaults to attMonth/attYear)
+//
+// Output:
+//   { base, hourlyRate, otHours, otPay,
+//     underHours, underPay, lateMin, lateDed,
+//     absentDays, absentDed,
+//     workedHours, presentDays, net,
+//     daysPerMonth, hoursPerDay, otRate }
+function calcSalary(e, attRows, monthOpt, yearOpt) {
+  // Settings (fall back to defaults if PAYROLL/WORK_SCHEDULE not loaded yet)
+  var P  = (typeof PAYROLL !== 'undefined') ? PAYROLL : { otRate:1.0, daysPerMonth:30, hoursPerDay:8, otBufferMin:30 };
+  var WS = (typeof WORK_SCHEDULE !== 'undefined') ? WORK_SCHEDULE : { weekday:{startTime:'08:00', endTime:'16:00'}, weekend:{startTime:'08:00', endTime:'17:00'} };
+  var monthIdx = (monthOpt != null) ? monthOpt : (typeof attMonth !== 'undefined' ? attMonth : new Date().getMonth());
+  var yearIdx  = (yearOpt  != null) ? yearOpt  : (typeof attYear  !== 'undefined' ? attYear  : new Date().getFullYear());
+
+  // 🆕 v7.4: Part-time branch — pay strictly by actual hours
+  if (isPartTime(e)) {
+    var ptHourly = e.salary || 0;
+    var ptWorkedMin = 0, ptPresent = 0;
+    if (Array.isArray(attendanceLog)) {
+      var ptByDate = {};
+      var laoOffPT = 7 * 60;
+      attendanceLog.forEach(function(r){
+        if (!r || r.empId !== e.id) return;
+        var ts = r.timestamp ? new Date(r.timestamp) : null;
+        if (!ts || isNaN(ts.getTime())) return;
+        var locOff = ts.getTimezoneOffset();
+        var dL = new Date(ts.getTime() + (laoOffPT + locOff) * 60000);
+        if (dL.getMonth() !== monthIdx || dL.getFullYear() !== yearIdx) return;
+        var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+        var hhmm = ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+        if (!ptByDate[ymd]) ptByDate[ymd] = { in:null, out:null };
+        if (r.action === 'clockIn'  && (!ptByDate[ymd].in  || hhmm < ptByDate[ymd].in))  ptByDate[ymd].in  = hhmm;
+        if (r.action === 'clockOut' && (!ptByDate[ymd].out || hhmm > ptByDate[ymd].out)) ptByDate[ymd].out = hhmm;
+      });
+      Object.keys(ptByDate).forEach(function(k){
+        var rec = ptByDate[k];
+        if (!rec.in) return;
+        ptPresent++;
+        if (rec.out) {
+          var ip = rec.in.split(':'), op = rec.out.split(':');
+          var inMin  = parseInt(ip[0],10)*60 + parseInt(ip[1],10);
+          var outMin = parseInt(op[0],10)*60 + parseInt(op[1],10);
+          if (outMin < inMin) outMin += 24*60;
+          ptWorkedMin += (outMin - inMin);
+        }
+      });
     }
-    if(r.lateMin > 10) lateCount++;
+    var ptWorkedHours = ptWorkedMin / 60;
+    var ptPay = Math.round(ptWorkedHours * ptHourly);
+    return {
+      payType:    'hourly',
+      base:       0,
+      hourlyRate: ptHourly,
+      otHours:    '0.0',
+      otPay:      0,
+      underHours: '0.0',
+      underPay:   0,
+      lateMin:    0,
+      lateCount:  0,
+      lateDed:    0,
+      absentDays: 0,
+      absentDed:  0,
+      absentHours:0,
+      leaveDays:  0,
+      workedHours: ptWorkedHours.toFixed(1),
+      presentDays: ptPresent,
+      totalHours:  ptWorkedHours.toFixed(1),
+      totalExpectedHours: 0,
+      weekdayHrs: 0,
+      weekendHrs: 0,
+      daysPerMonth: P.daysPerMonth || 30,
+      hoursPerDay:  P.hoursPerDay  || 8,
+      otRate:       P.otRate       != null ? P.otRate : 1.0,
+      net:          Math.max(0, ptPay)
+    };
+  }
+
+  var base = e.salary || 0;
+  var daysPerMonth = P.daysPerMonth || 30;  // 🆕 v7.4: Lao law default
+  var hoursPerDay  = P.hoursPerDay  || 8;
+  var otRateMult   = P.otRate       != null ? P.otRate : 1.0;
+  var otBufferMin  = P.otBufferMin  != null ? P.otBufferMin : 30;
+  // 🆕 v7.3: hourly rate now respects mixed schedule (Mon-Fri vs Sat-Sun).
+  //          When weekend hours differ from weekday hours, we compute hourly
+  //          from total *expected* hours per month so baseline = the
+  //          full-month schedule (Option A — extra weekend hour is part of base).
+  function _toMin(s) { if (!s) return null; var p = String(s).split(':'); return parseInt(p[0],10)*60 + parseInt(p[1],10); }
+  var wdStartM = _toMin(WS.weekday && WS.weekday.startTime);
+  var wdEndM   = _toMin(WS.weekday && WS.weekday.endTime);
+  var weStartM = _toMin(WS.weekend && WS.weekend.startTime);
+  var weEndM   = _toMin(WS.weekend && WS.weekend.endTime);
+  var weekdayHrs = (wdStartM != null && wdEndM != null) ? Math.max(0, (wdEndM - wdStartM) / 60) : hoursPerDay;
+  var weekendHrs = (weStartM != null && weEndM != null) ? Math.max(0, (weEndM - weStartM) / 60) : hoursPerDay;
+
+  // Count workdays for the month: Mon-Sat included, Sunday excluded
+  var firstDayCalc  = new Date(yearIdx, monthIdx, 1);
+  var nextMonthCalc = new Date(yearIdx, monthIdx+1, 1);
+  var weekdayCount = 0, weekendCount = 0;
+  for (var dC = new Date(firstDayCalc); dC < nextMonthCalc; dC.setDate(dC.getDate()+1)) {
+    var dow = dC.getDay();
+    if (dow === 0) continue;       // Sunday — off
+    if (dow === 6) weekendCount++; // Saturday is the only "weekend" workday
+    else weekdayCount++;
+  }
+  var totalExpectedHours = (weekdayCount * weekdayHrs) + (weekendCount * weekendHrs);
+  // Fall back to legacy formula if schedule data is bogus
+  if (!totalExpectedHours) totalExpectedHours = daysPerMonth * hoursPerDay;
+  var hourlyRate = base / totalExpectedHours;
+
+  // Pull in/out per date for this employee, this month, from real log
+  var perDate = {};
+  var laoOff = 7 * 60;
+  if (Array.isArray(attendanceLog)) {
+    attendanceLog.forEach(function(r){
+      if (!r || r.empId !== e.id) return;
+      var ts = r.timestamp ? new Date(r.timestamp) : null;
+      if (!ts || isNaN(ts.getTime())) return;
+      var locOff = ts.getTimezoneOffset();
+      var dL = new Date(ts.getTime() + (laoOff + locOff) * 60000);
+      if (dL.getMonth() !== monthIdx || dL.getFullYear() !== yearIdx) return;
+      var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+      var hhmm = ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+      if (!perDate[ymd]) perDate[ymd] = { in:null, out:null, dow: dL.getDay() };
+      if (r.action === 'clockIn'  && (!perDate[ymd].in  || hhmm < perDate[ymd].in))  perDate[ymd].in  = hhmm;
+      if (r.action === 'clockOut' && (!perDate[ymd].out || hhmm > perDate[ymd].out)) perDate[ymd].out = hhmm;
+    });
+  }
+
+  function toMin(s) { if (!s) return null; var p = String(s).split(':'); return parseInt(p[0],10)*60 + parseInt(p[1],10); }
+  function scheduleFor(dow) {
+    // dow 0=Sun, 6=Sat → weekend; 1-5 → weekday
+    var s = (dow === 0 || dow === 6) ? WS.weekend : WS.weekday;
+    return { startMin: toMin(s.startTime), endMin: toMin(s.endTime) };
+  }
+
+  var presentDays = 0, workedMin = 0, otMin = 0, underMin = 0, lateMin = 0;
+  Object.keys(perDate).forEach(function(ymd){
+    var rec = perDate[ymd];
+    if (!rec.in) return;
+    presentDays++;
+    var sched = scheduleFor(rec.dow);
+    var inMin  = toMin(rec.in);
+    // Late: clock-in after scheduled start (no grace, per A1)
+    if (sched.startMin != null && inMin > sched.startMin) {
+      lateMin += (inMin - sched.startMin);
+    }
+    if (rec.out) {
+      var outMin = toMin(rec.out);
+      if (outMin < inMin) outMin += 24*60;
+      var worked = outMin - inMin;
+      workedMin += worked;
+      // OT only AFTER scheduled end + buffer (B3 rule)
+      if (sched.endMin != null) {
+        var otThresholdMin = sched.endMin + otBufferMin;
+        // Compute outMin in same axis as schedule (no day-cross fudge for normal shifts)
+        var endRel = outMin > 24*60 ? outMin : outMin;
+        if (endRel > otThresholdMin) {
+          otMin += (endRel - otThresholdMin);
+        }
+        // Undertime: short of scheduled end
+        if (outMin < sched.endMin) underMin += (sched.endMin - outMin);
+      }
+    }
   });
 
-  var otPay    = Math.round(otHours * hourlyRate * 1.5); // OT at 1.5x
-  var underPay = Math.round(underHours * hourlyRate);
-  var lateDed  = lateCount * Math.round(hourlyRate * 0.5); // 30min deduction per late
-  var net = base + otPay - underPay - lateDed;
+  var firstDay  = new Date(yearIdx, monthIdx, 1);
+  var nextMonth = new Date(yearIdx, monthIdx+1, 1);
+  var laoNowFn = (function(){ var n=new Date(); var lo=7*60; var po=n.getTimezoneOffset(); return new Date(n.getTime()+(lo+po)*60000); })();
+  // 🆕 v7.3: walk each workday-to-date; check if it has clock-in/leave; count
+  //          absent HOURS by schedule (weekday vs weekend) instead of flat 8h.
+  var absentDays = 0, absentHours = 0;
+  // Set of dates the employee was present (any clock-in)
+  var presentSet = {};
+  Object.keys(perDate).forEach(function(k){ if (perDate[k].in) presentSet[k] = true; });
+  // Set of approved leave dates for this employee, this month
+  var leaveSet = {};
+  if (Array.isArray(leaveRequests)) {
+    leaveRequests.forEach(function(lr){
+      if (!lr || lr.empId !== e.id || lr.status !== 'approved') return;
+      var f = String(lr.fromDate||'').slice(0,10), t = String(lr.toDate||lr.fromDate||'').slice(0,10);
+      if (!f) return;
+      var d1 = new Date(f+'T00:00:00+07:00'); var d2 = new Date(t+'T00:00:00+07:00');
+      if (isNaN(d1.getTime())) return; if (isNaN(d2.getTime())) d2 = d1;
+      for (var d = new Date(d1); d <= d2; d.setDate(d.getDate()+1)) {
+        if (d.getMonth() === monthIdx && d.getFullYear() === yearIdx) {
+          var ymd2 = d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+          leaveSet[ymd2] = true;
+        }
+      }
+    });
+  }
+  for (var dE = new Date(firstDay); dE < nextMonth && dE <= laoNowFn; dE.setDate(dE.getDate()+1)) {
+    var dowE = dE.getDay();
+    if (dowE === 0) continue; // Sunday — off, never absent
+    var ymdE = dE.getFullYear()+'-'+('0'+(dE.getMonth()+1)).slice(-2)+'-'+('0'+dE.getDate()).slice(-2);
+    if (presentSet[ymdE] || leaveSet[ymdE]) continue;
+    absentDays++;
+    absentHours += (dowE === 6) ? weekendHrs : weekdayHrs;
+  }
+  // Recount leave days too (used for display)
+  var leaveDays = Object.keys(leaveSet).length;
 
-  return {base:base, hourlyRate:Math.round(hourlyRate), otHours:otHours.toFixed(1), otPay:otPay,
-          underHours:underHours.toFixed(1), underPay:underPay, lateDed:lateDed, lateCount:lateCount,
-          net:Math.max(0,net), presentDays:presentDays, totalHours:totalHours.toFixed(1)};
+  // Money math
+  var workedHours = workedMin / 60;
+  var otHours     = otMin / 60;
+  var underHours  = underMin / 60;
+  var lateHours   = lateMin / 60;
+
+  var otPay     = Math.round(otHours    * hourlyRate * otRateMult);
+  var underPay  = Math.round(underHours * hourlyRate);
+  var lateDed   = Math.round(lateHours  * hourlyRate);
+  var absentDed = Math.round(absentHours * hourlyRate);
+
+  // Net = base + OT - all deductions; cap at 0
+  var net = base + otPay - underPay - lateDed - absentDed;
+
+  return {
+    base:        base,
+    hourlyRate:  Math.round(hourlyRate),
+    otHours:     otHours.toFixed(1),
+    otPay:       otPay,
+    underHours:  underHours.toFixed(1),
+    underPay:    underPay,
+    lateMin:     lateMin,
+    lateCount:   lateMin,                 // legacy field still used in old card
+    lateDed:     lateDed,
+    absentDays:  absentDays,
+    absentDed:   absentDed,
+    leaveDays:   leaveDays,
+    workedHours: workedHours.toFixed(1),
+    presentDays: presentDays,
+    totalHours:  workedHours.toFixed(1),  // legacy alias
+    daysPerMonth:daysPerMonth,
+    payType:     'monthly',  // 🆕 v7.4
+    hoursPerDay: hoursPerDay,
+    weekdayHrs:  weekdayHrs,
+    weekendHrs:  weekendHrs,
+    totalExpectedHours: totalExpectedHours,
+    absentHours: absentHours,
+    otRate:      otRateMult,
+    net:         Math.max(0, net)
+  };
 }
 
 function fmtLAK(n){ return n.toLocaleString()+' LAK'; }
+
+// 🆕 v7.7: Escape utility — prevents XSS when user-typed text is concatenated
+//          into HTML strings. Use for all rule_en, rule_lao, photo URLs in
+//          attributes/onclick handlers.
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+// For URLs going into onclick="...'+url+'..." we need to escape JS-string risks too
+function escJs(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, '\\\'')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
+}
 
 // ════════════════════════════════════════════════════════════════════
 // 🆕 LAOS TIME FORMATTERS — Vientiane is UTC+7 (Indochina Time, ICT)
@@ -2995,11 +3259,11 @@ function renderAttendanceTab(e) {
   var demoRows = [];
   var calc = calcSalary(e, demoRows);
 
-  // stats
+  // stats — 🆕 v7.2: real numbers from log via calcSalary
   var f=function(id,v){var el=document.getElementById(id);if(el)el.textContent=v;};
   f('att-present', calc.presentDays);
-  f('att-absent',  demoRows.filter(function(r){return r.status==='absent';}).length);
-  f('att-leave',   leaveRequests.filter(function(r){return r.empId===e.id&&r.status!=='rejected';}).length);
+  f('att-absent',  calc.absentDays);
+  f('att-leave',   calc.leaveDays);
   f('att-ot',      calc.otHours+'h');
 
   // ---- SALARY BLOCK — respect visibility ----
@@ -3010,13 +3274,28 @@ function renderAttendanceTab(e) {
   if(showSalary) {
     var salEl = document.getElementById('sal-calc-rows');
     if(salEl) {
+      // 🆕 v7.4: Part-time vs Full-time → show different rows
       var rows = '';
-      if(vis.salary)     rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)">Base Salary</span><span style="font-weight:500">'+fmtLAK(calc.base)+'</span></div>';
-      if(vis.overtime)   rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)">Hourly Rate</span><span>'+fmtLAK(calc.hourlyRate)+'/hr</span></div>';
-      if(vis.overtime)   rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)">Overtime ('+calc.otHours+'h × 1.5x)</span><span style="color:var(--gr);font-weight:500">+ '+fmtLAK(calc.otPay)+'</span></div>';
-      if(vis.deductions) rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)">Undertime ('+calc.underHours+'h)</span><span style="color:var(--re);font-weight:500">- '+fmtLAK(calc.underPay)+'</span></div>';
-      if(vis.deductions) rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0"><span style="color:var(--g600)">Late arrivals ('+calc.lateCount+'x)</span><span style="color:var(--re);font-weight:500">- '+fmtLAK(calc.lateDed)+'</span></div>';
-      salEl.innerHTML = rows || '<div style="font-size:12px;color:var(--g400)">Salary details not available</div>';
+      if (calc.payType === 'hourly') {
+        // PART-TIME view — pay = hourly × actual hours
+        if(vis.salary)     rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Hourly Rate</span><span class="bi-lo">ຄ່າຊົ່ວໂມງ</span></span><span style="font-size:10px;color:var(--or);margin-left:6px">(Part-time)</span></span><span style="font-weight:500">'+fmtLAK(calc.hourlyRate)+'/hr</span></div>';
+        if(vis.overtime)   rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Hours Worked</span><span class="bi-lo">ຊົ່ວໂມງເຮັດ</span></span></span><span>'+calc.workedHours+' h</span></div>';
+        if(vis.overtime)   rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Total</span><span class="bi-lo">ລວມ</span></span> ('+calc.workedHours+'h × '+fmtLAK(calc.hourlyRate)+')</span><span style="color:var(--gr);font-weight:500">'+fmtLAK(calc.net)+'</span></div>';
+      } else {
+        // FULL-TIME view — base + OT - deductions
+        if(vis.salary)     rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Base Salary</span><span class="bi-lo">ເງິນເດືອນ</span></span></span><span style="font-weight:500">'+fmtLAK(calc.base)+'</span></div>';
+        if(vis.overtime)   rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Hourly Rate</span><span class="bi-lo">ຄ່າຊົ່ວໂມງ</span></span><span style="font-size:10px;color:var(--g400);margin-left:6px">('+calc.base.toLocaleString()+' ÷ '+calc.totalExpectedHours+'h schedule)</span></span><span>'+fmtLAK(calc.hourlyRate)+'/hr</span></div>';
+        if(vis.overtime)   rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Hours Worked</span><span class="bi-lo">ຊົ່ວໂມງເຮັດ</span></span></span><span>'+calc.workedHours+' h</span></div>';
+        if(vis.overtime && parseFloat(calc.otHours) > 0)
+                           rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Overtime</span><span class="bi-lo">OT</span></span> ('+calc.otHours+'h × '+calc.otRate+'x)</span><span style="color:var(--gr);font-weight:500">+ '+fmtLAK(calc.otPay)+'</span></div>';
+        if(vis.deductions && parseFloat(calc.underHours) > 0)
+                           rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Undertime</span><span class="bi-lo">ເຮັດບໍ່ຄົບ</span></span> ('+calc.underHours+'h)</span><span style="color:var(--re);font-weight:500">- '+fmtLAK(calc.underPay)+'</span></div>';
+        if(vis.deductions && calc.lateMin > 0)
+                           rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--g100)"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Late</span><span class="bi-lo">ມາຊ້າ</span></span> ('+calc.lateMin+' min)</span><span style="color:var(--re);font-weight:500">- '+fmtLAK(calc.lateDed)+'</span></div>';
+        if(vis.deductions && calc.absentDays > 0)
+                           rows += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0"><span style="color:var(--g600)"><span class="bi"><span class="bi-en">Absent</span><span class="bi-lo">ຂາດວຽກ</span></span> ('+calc.absentDays+' day · '+calc.absentHours+'h)</span><span style="color:var(--re);font-weight:500">- '+fmtLAK(calc.absentDed)+'</span></div>';
+      }
+      salEl.innerHTML = rows || '<div style="font-size:12px;color:var(--g400)">No payroll data this month</div>';
     }
     var netRow = document.getElementById('sal-net-row');
     if(netRow) netRow.style.display = vis.netPay ? '' : 'none';
@@ -3110,6 +3389,9 @@ function renderAttendanceTab(e) {
 // ===================== PAYSLIP =====================
 var payAdjustments = {}; // keyed by empId, array of {type,amount,reason,note,by,date}
 var paymentRecords = {}; // keyed by empId, array of payments
+// 🆕 v7.7: Rules + instruction photos (Round 7)
+var RESTAURANT_RULES = [];        // [{id, category, rule_en, rule_lao, order}]
+var instructionPhotos = {};       // {"role|secIdx|itemIdx": [{url, order}]}
 // 🆕 Manual salary adjustments (additions / deductions) entered by owner per month
 // Format: { empId: [{type:'addition'|'deduction', amount:50000, reason:'Bonus', date:'2026-04-30'}] }
 var paymentAdjustments = {};
@@ -3159,6 +3441,13 @@ function renderPayslip(e) {
   var month = new Date().toLocaleDateString('en-GB',{month:'long',year:'numeric'});
   var el=function(id){return document.getElementById(id);};
   if(el('payslip-month')) el('payslip-month').textContent = month;
+
+  // 🆕 v7.6: Personal Export buttons — owner + manager only
+  var canExport = currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager');
+  var btnCsv = el('btn-personal-csv');
+  var btnPdf = el('btn-personal-pdf');
+  if (btnCsv) btnCsv.style.display = canExport ? '' : 'none';
+  if (btnPdf) btnPdf.style.display = canExport ? '' : 'none';
 
   // ---- LAST PAID BANNER ----
   var recs = paymentRecords[e.id]||[];
@@ -3300,8 +3589,8 @@ function recordPayment(){
 
     // employee info strip
     '<div style="background:var(--g50);border-radius:var(--rads);padding:10px 14px;margin-bottom:16px;border:1px solid var(--g100)">'+
-    '<div style="font-size:13px;font-weight:600;color:var(--br)">'+e.name+'</div>'+
-    '<div style="font-size:11px;color:var(--g400)">#'+e.id+' &bull; '+roleName(e.role)+' &bull; Base: '+fmtLAK(e.salary)+'</div>'+
+    '<div style="font-size:13px;font-weight:600;color:var(--br)">'+escHtml(e.name)+'</div>'+
+    '<div style="font-size:11px;color:var(--g400)">#'+escHtml(e.id)+' &bull; '+escHtml(roleName(e.role))+' &bull; Base: '+fmtLAK(e.salary)+'</div>'+
     '</div>'+
 
     // amount + method
@@ -3457,6 +3746,8 @@ function savePayment(){
     if(!paymentRecords[printEmployee.id]) paymentRecords[printEmployee.id]=[];
     var rec={
       id:'PAY'+Date.now(),
+      empId:printEmployee.id,
+      name:printEmployee.name,
       amount:amount, method:method, payDate:payDate, period:period, note:note,
       bank:bank, acct:acct,
       proof:proofData||null,
@@ -3466,6 +3757,7 @@ function savePayment(){
       sigReceiver:paySignatures.receiver||null,
       recordedAt:new Date().toLocaleString('en-GB')
     };
+    // Optimistic local update so UI feels instant
     paymentRecords[printEmployee.id].push(rec);
     paySignatures={payer:null,receiver:null};
     logEvent('edit','Payment recorded',
@@ -3475,6 +3767,52 @@ function savePayment(){
     document.getElementById('pay-modal').remove();
     renderPayslip(printEmployee);
     toast('&#10003; Payment recorded — '+fmtLAK(amount)+' ('+method+')');
+
+    // 🆕 v7.5: persist to Sheet so payment history survives refresh
+    if (SHEET_URL) {
+      // Strategy: if proof is base64, upload to Drive first → store URL.
+      //           Otherwise just push the row.
+      function pushPayment(proofUrl) {
+        apiPost({
+          action:      'savePayment',
+          id:          rec.id,
+          empId:       rec.empId,
+          name:        rec.name,
+          amount:      rec.amount,
+          method:      rec.method,
+          payDate:     rec.payDate,
+          period:      rec.period,
+          note:        rec.note,
+          bank:        rec.bank,
+          acct:        rec.acct,
+          proofUrl:    proofUrl || '',
+          paidBy:      rec.paidBy,
+          receivedBy:  rec.receivedBy,
+          sigPayer:    rec.sigPayer || '',
+          sigReceiver: rec.sigReceiver || '',
+          recordedAt:  rec.recordedAt
+        }, function(d){
+          if (!d || !d.ok) {
+            toast('⚠️ Saved locally but Sheet sync failed');
+          }
+        }, true);
+      }
+      if (proofData && proofData.indexOf && proofData.indexOf('data:') === 0) {
+        // Upload photo to Drive first, then push payment with URL
+        apiPost({
+          action: 'uploadPhoto',
+          dataUrl: proofData,
+          filename: 'payment-'+rec.id
+        }, function(up){
+          var url = (up && up.ok && up.url) ? up.url : '';
+          // Store URL on local record too so it survives a re-render
+          rec.proofUrl = url;
+          pushPayment(url);
+        }, true);
+      } else {
+        pushPayment(rec.proofUrl || '');
+      }
+    }
   }
 
   if(proofFile){
@@ -3488,6 +3826,8 @@ function renderPaymentHistory(empId){
   var el=document.getElementById('payment-history'); if(!el) return;
   var recs=(paymentRecords[empId]||[]).slice().reverse();
   if(!recs.length){el.innerHTML='<div style="font-size:13px;color:var(--g400);padding:10px 0">No payments recorded yet</div>';return;}
+  // 🆕 v7.5: owner can delete a payment row
+  var canDelete = currentUser && currentUser.role === 'owner';
   el.innerHTML=recs.map(function(r){
     var methodIcon = r.method==='Cash'?'&#128181;':r.method==='Bank Transfer'?'&#127968;':'&#128260;';
     var sigRow='';
@@ -3497,6 +3837,10 @@ function renderPaymentHistory(empId){
       if(r.sigReceiver) sigRow+='<div style="flex:1;text-align:center"><img src="'+r.sigReceiver+'" style="max-height:36px;display:block;margin:0 auto"><div style="font-size:9px;color:var(--g400);border-top:1px solid var(--g200);padding-top:2px;margin-top:2px">'+r.receivedBy+'</div></div>';
       sigRow+='</div>';
     }
+    var proofUrl = r.proofUrl || r.proof || '';
+    var deleteBtn = canDelete
+      ? '<button onclick="deletePaymentRecord(\''+empId+'\',\''+r.id+'\')" style="background:none;border:1px solid var(--re);color:var(--re);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;margin-left:6px" title="Delete payment">🗑</button>'
+      : '';
     return '<div style="background:#fff;border-radius:var(--rads);padding:13px 15px;margin-bottom:9px;border:1px solid var(--g100);box-shadow:var(--sh)">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
       '<div>'+
@@ -3505,7 +3849,7 @@ function renderPaymentHistory(empId){
       '</div>'+
       '<div style="text-align:right">'+
       '<span class="badge bg-gr" style="font-size:10px"><span class=\"bi\"><span class=\"bi-en\">Paid</span><span class=\"bi-lo\">ຈ່າຍແລ້ວ</span></span></span>'+
-      '<div style="font-size:10px;color:var(--g400);margin-top:3px">'+r.payDate+'</div>'+
+      '<div style="font-size:10px;color:var(--g400);margin-top:3px">'+r.payDate+deleteBtn+'</div>'+
       '</div>'+
       '</div>'+
       '<div style="font-size:11px;color:var(--g600);margin-top:6px">'+
@@ -3514,7 +3858,7 @@ function renderPaymentHistory(empId){
       (r.period?'<div style="font-size:11px;color:var(--g400);margin-top:2px">Period: '+r.period+'</div>':'')+
       (r.note?'<div style="font-size:11px;color:var(--g400)">Note: '+r.note+'</div>':'')+
       sigRow+
-      (r.proof?'<div style="margin-top:8px"><img src="'+r.proof+'" style="max-width:100px;max-height:70px;border-radius:6px;cursor:pointer" onclick="window.open(\''+r.proof+'\',\'_blank\')" title="Tap to view full receipt"></div>':'')+
+      (proofUrl?'<div style="margin-top:8px"><img src="'+proofUrl+'" style="max-width:100px;max-height:70px;border-radius:6px;cursor:pointer" onclick="window.open(\''+proofUrl+'\',\'_blank\')" title="Tap to view full receipt"></div>':'')+
       '</div>';
   }).join('');
 }
@@ -4096,10 +4440,10 @@ function saveEmployeeEdits() {
   printEmployee = emp;
   // Sync to Sheets
   if (SHEET_URL) pushUpdateEmployee({id:emp.id, role:role, access:access, contractStart:cstart, contractEnd:cend, salary:salary});
-  logEvent('edit','Employee updated', emp.name+' — role: '+role+', access: '+access+', contract: '+cstart+' to '+cend);
+  logEvent('edit','Employee updated', emp.name+' — role: '+roleName(role)+', access: '+access+', contract: '+cstart+' to '+cend);
   // Refresh displays
-  document.getElementById('mp-access-level').innerHTML = '<span class="badge '+(access==='owner'?'bg-or':access==='manager'?'bg-bl':'bg-gy')+'">'+access+'</span>';
-  document.getElementById('mp-employ').innerHTML = '<div class="info-item"><label>Role</label><span>'+role+'</span></div><div class="info-item"><label>Salary</label><span>'+salary.toLocaleString()+' LAK</span></div><div class="info-item"><label><span class="bi"><span class="bi-en">Contract Start</span><span class="bi-lo">ເລີ່ມສັນຍາ</span></span></label><span>'+cstart+'</span></div><div class="info-item"><label><span class="bi"><span class="bi-en">Contract End</span><span class="bi-lo">ໝົດສັນຍາ</span></span></label><span>'+cend+'</span></div><div class="info-item"><label>Clock In</label><span>'+(emp.clockIn||'<span class=\"bi\"><span class=\"bi-en\">Not in</span><span class=\"bi-lo\">ບໍ່ໄດ້ຂຶ້ນວຽກ</span></span>')+'</span></div><div class="info-item"><label>Clock Out</label><span>'+(emp.clockOut||'<span class=\"bi\"><span class=\"bi-en\">Not yet</span><span class=\"bi-lo\">ຍັງບໍ່ທັນ</span></span>')+'</span></div>';
+  document.getElementById('mp-access-level').innerHTML = '<span class="badge '+(access==='owner'?'bg-or':access==='manager'?'bg-bl':'bg-gy')+'">'+escHtml(access||'')+'</span>';
+  document.getElementById('mp-employ').innerHTML = '<div class="info-item"><label>Role</label><span>'+escHtml(role||'')+'</span></div><div class="info-item"><label>Salary</label><span>'+salary.toLocaleString()+' LAK</span></div><div class="info-item"><label><span class="bi"><span class="bi-en">Contract Start</span><span class="bi-lo">ເລີ່ມສັນຍາ</span></span></label><span>'+escHtml(cstart||'')+'</span></div><div class="info-item"><label><span class="bi"><span class="bi-en">Contract End</span><span class="bi-lo">ໝົດສັນຍາ</span></span></label><span>'+escHtml(cend||'')+'</span></div><div class="info-item"><label>Clock In</label><span>'+(emp.clockIn?escHtml(emp.clockIn):'<span class="bi"><span class="bi-en">Not in</span><span class="bi-lo">ບໍ່ໄດ້ຂຶ້ນວຽກ</span></span>')+'</span></div><div class="info-item"><label>Clock Out</label><span>'+(emp.clockOut?escHtml(emp.clockOut):'<span class="bi"><span class="bi-en">Not yet</span><span class="bi-lo">ຍັງບໍ່ທັນ</span></span>')+'</span></div>';
   renderEmployees(employees);
   renderDashboard();
   renderPrintTab(emp);
@@ -4200,7 +4544,7 @@ function saveProfile() {
 
   // update modal header
   document.getElementById('m-name').textContent = name;
-  document.getElementById('m-sub').textContent  = role+' · #'+emp.id;
+  document.getElementById('m-sub').textContent  = roleName(role)+' · #'+emp.id;
   printEmployee = emp;
 
   // sync to sheets
@@ -4368,7 +4712,7 @@ function renderMyHome() {
     +'<div style="flex:1">'
     +'<div style="font-size:11px;color:rgba(255,255,255,.6);margin-bottom:3px">'+(lo?'ສະບາຍດີ 👋':'Hello 👋')+'</div>'
     +'<div style="font-size:18px;font-weight:700">'+emp.name+'</div>'
-    +'<div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px">'+(roleData?roleData.icon+' ':'')+emp.role+'</div>'
+    +'<div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:2px">'+(roleData?roleData.icon+' ':'')+roleName(emp.role)+'</div>'
     +'</div>'
     +'<div style="text-align:right">'
     +'<div style="font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px">'+(lo?'ສະຖານະ':'Status')+'</div>'
@@ -4405,7 +4749,7 @@ function renderMyHome() {
 
   html += '<div class="card" style="margin-bottom:16px">'
     +'<div class="card-hd">'
-    +'<span class="card-title"><span class="bi"><span class="bi-en">📋 My Tasks — '+emp.role+'</span><span class="bi-lo">📋 ວຽກຂ້ອຍ — '+emp.role+'</span></span></span>'
+    +'<span class="card-title"><span class="bi"><span class="bi-en">📋 My Tasks — '+roleName(emp.role)+'</span><span class="bi-lo">📋 ວຽກຂ້ອຍ — '+roleName(emp.role)+'</span></span></span>'
     +'<span class="badge bg-or" style="cursor:pointer" onclick="showView(\'checklist\')"><span class="bi"><span class="bi-en">Tick off →</span><span class="bi-lo">ທຳເຄື່ອງໝາຍ →</span></span></span>'
     +'</div>'
     +'<div class="card-bd" style="padding-top:0">';
@@ -5080,7 +5424,7 @@ function recruitAddToHR(){
   ACCOUNTS[loginId] = { pass:'', role:'employee', name:nameEn, empId:newId };
 
   if(SHEET_URL) pushEmployee(emp);
-  logEvent('edit','Employee added via Recruitment', nameEn+' ('+newId+') — role: '+role);
+  logEvent('edit','Employee added via Recruitment', nameEn+' ('+newId+') — role: '+roleName(role));
   toast('✅ '+nameEn+' added! ID: '+newId+' | Login: '+loginId+' | First login will set their password');
   // 🆕 Clear saved form data so next applicant starts fresh
   recruitFormData = {};
@@ -6949,6 +7293,602 @@ function confirmDeleteAtt(empId, date) {
   }, true);
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// 🆕 v7.5 — PAYMENT PERSISTENCE (Round 5)
+// ═══════════════════════════════════════════════════════════════════
+// Pull payments from Sheet on login + when profile opens. Edit/delete
+// also writes through to Sheet so changes survive refresh.
+
+function fetchPayments(cb) {
+  if (!SHEET_URL) { if (cb) cb(); return; }
+  apiPost({ action: 'getPayments' }, function(d){
+    if (d && d.ok && Array.isArray(d.payments)) {
+      // Rebuild local cache: clear then refill grouped by empId
+      paymentRecords = {};
+      d.payments.forEach(function(p){
+        if (!p.empId) return;
+        if (!paymentRecords[p.empId]) paymentRecords[p.empId] = [];
+        // Map Sheet record to local shape
+        paymentRecords[p.empId].push({
+          id:          p.id,
+          empId:       p.empId,
+          name:        p.name,
+          amount:      Number(p.amount) || 0,
+          method:      p.method,
+          payDate:     p.payDate,
+          period:      p.period,
+          note:        p.note,
+          bank:        p.bank,
+          acct:        p.acct,
+          proofUrl:    p.proofUrl,        // Drive URL (preferred)
+          proof:       p.proofUrl || null, // Legacy field for old code paths
+          paidBy:      p.paidBy,
+          receivedBy:  p.receivedBy,
+          sigPayer:    p.sigPayer,
+          sigReceiver: p.sigReceiver,
+          recordedAt:  p.recordedAt
+        });
+      });
+      // Sort each employee's list newest-first
+      Object.keys(paymentRecords).forEach(function(k){
+        paymentRecords[k].sort(function(a,b){
+          return String(b.payDate||b.recordedAt||'').localeCompare(String(a.payDate||a.recordedAt||''));
+        });
+      });
+      // Re-render profile if open
+      if (typeof printEmployee === 'object' && printEmployee && typeof renderPayslip === 'function') {
+        try { renderPayslip(printEmployee); } catch(e) {}
+      }
+    }
+    if (cb) cb();
+  }, true);
+}
+
+function deletePaymentRecord(empId, payId) {
+  if (!confirm('Delete this payment record? This cannot be undone.')) return;
+  if (!SHEET_URL) {
+    // Local-only delete
+    if (paymentRecords[empId]) {
+      paymentRecords[empId] = paymentRecords[empId].filter(function(p){ return p.id !== payId; });
+    }
+    if (typeof printEmployee === 'object' && printEmployee) renderPayslip(printEmployee);
+    toast('Deleted (local only)');
+    return;
+  }
+  apiPost({
+    action: 'deletePayment',
+    id: payId,
+    user: (currentUser && currentUser.name) || 'Owner'
+  }, function(d){
+    if (d && d.ok) {
+      if (paymentRecords[empId]) {
+        paymentRecords[empId] = paymentRecords[empId].filter(function(p){ return p.id !== payId; });
+      }
+      logEvent('edit', 'Payment deleted', 'id: '+payId);
+      if (typeof printEmployee === 'object' && printEmployee) renderPayslip(printEmployee);
+      toast('Payment deleted ✓');
+    } else {
+      toast('Delete failed: '+(d && d.error ? d.error : 'unknown'));
+    }
+  }, true);
+}
+
+function exportPaymentHistory(empId) {
+  // If empId given → just that employee. Otherwise → all employees.
+  var rows = [];
+  var headers = ['Employee','Date','Amount (LAK)','Method','Bank','Account','Period','Note','Paid By','Recorded At'];
+  rows.push(headers);
+  var ids = empId ? [empId] : Object.keys(paymentRecords);
+  ids.forEach(function(id){
+    var emp = employees.find(function(e){ return e.id === id; });
+    var name = emp ? emp.name : id;
+    (paymentRecords[id] || []).forEach(function(p){
+      rows.push([
+        name,
+        p.payDate || '',
+        p.amount || 0,
+        p.method || '',
+        p.bank || '',
+        p.acct || '',
+        p.period || '',
+        (p.note || '').replace(/\n/g, ' '),
+        p.paidBy || '',
+        p.recordedAt || ''
+      ]);
+    });
+  });
+  if (rows.length <= 1) { toast('No payments to export'); return; }
+  var csv = rows.map(function(r){ return r.map(function(v){ return '"'+String(v).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+  var fileName = empId
+    ? 'MiMi_Payments_'+(employees.find(function(e){return e.id===empId;})||{name:empId}).name+'.csv'
+    : 'MiMi_Payments_All.csv';
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download = fileName;
+  a.click();
+  toast('Payment history exported ✓');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🆕 v7.6 — PERSONAL EXPORT (Round 6) — CSV + PDF
+// ═══════════════════════════════════════════════════════════════════
+// Modal lets owner/manager pick a date range for ONE employee, then
+// outputs either a CSV or a printable PDF (uses window.print() with
+// print-only stylesheet so we don't pull a heavy library).
+
+function openPersonalExportDialog(format) {
+  if (!printEmployee) { toast('Open employee profile first'); return; }
+  format = format || 'csv';
+  var existing = document.getElementById('personal-export-modal');
+  if (existing) existing.remove();
+  // Default range: this month, capped at today
+  var today = new Date();
+  var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  var fromStr = firstDay.toISOString().slice(0,10);
+  var toStr   = today.toISOString().slice(0,10);
+  var modal = document.createElement('div');
+  modal.id = 'personal-export-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.25)">'
+    + '<div style="font-size:16px;font-weight:700;color:var(--br);margin-bottom:4px">'
+    +   (format==='pdf' ? '📄 Export PDF' : '📊 Export CSV')
+    + '</div>'
+    + '<div style="font-size:12px;color:var(--g400);margin-bottom:14px">'+printEmployee.name+' — '+roleName(printEmployee.role)+'</div>'
+    + '<input type="hidden" id="pex-format" value="'+format+'">'
+    + '<div style="display:flex;gap:10px;margin-bottom:14px">'
+    +   '<div style="flex:1"><label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">From / ຈາກ</label>'
+    +     '<input type="date" id="pex-from" value="'+fromStr+'" class="fc" style="width:100%"></div>'
+    +   '<div style="flex:1"><label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">To / ເຖິງ</label>'
+    +     '<input type="date" id="pex-to" value="'+toStr+'" class="fc" style="width:100%"></div>'
+    + '</div>'
+    + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+    +   '<button class="btn btn-out" onclick="document.getElementById(\'personal-export-modal\').remove()">Cancel</button>'
+    +   '<button class="btn btn-pr" onclick="runPersonalExport()">'+(format==='pdf'?'📄 Generate PDF':'📊 Download CSV')+'</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+}
+
+function runPersonalExport() {
+  var fromDate = document.getElementById('pex-from').value;
+  var toDate   = document.getElementById('pex-to').value;
+  var format   = document.getElementById('pex-format').value;
+  if (!fromDate || !toDate) { toast('Select both dates'); return; }
+  if (fromDate > toDate)    { toast('From date must be before To date'); return; }
+  var data = collectPersonalData(printEmployee, fromDate, toDate);
+  if (format === 'pdf') {
+    generatePersonalPDF(printEmployee, fromDate, toDate, data);
+  } else {
+    generatePersonalCSV(printEmployee, fromDate, toDate, data);
+  }
+  document.getElementById('personal-export-modal').remove();
+}
+
+// Build per-day attendance rows + summary + payments for one employee
+// in the given date range. Pure function — no DOM, no side-effects.
+function collectPersonalData(e, fromDate, toDate) {
+  var laoOff = 7 * 60;
+  // 1. Per-date attendance from real log
+  var perDate = {};
+  if (Array.isArray(attendanceLog)) {
+    attendanceLog.forEach(function(r){
+      if (!r || r.empId !== e.id) return;
+      var ts = r.timestamp ? new Date(r.timestamp) : null;
+      if (!ts || isNaN(ts.getTime())) return;
+      var locOff = ts.getTimezoneOffset();
+      var dL = new Date(ts.getTime() + (laoOff + locOff) * 60000);
+      var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+      if (ymd < fromDate || ymd > toDate) return;
+      var hhmm = ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+      if (!perDate[ymd]) perDate[ymd] = { date:ymd, in:null, out:null, dow: dL.getDay() };
+      if (r.action === 'clockIn'  && (!perDate[ymd].in  || hhmm < perDate[ymd].in))  perDate[ymd].in  = hhmm;
+      if (r.action === 'clockOut' && (!perDate[ymd].out || hhmm > perDate[ymd].out)) perDate[ymd].out = hhmm;
+    });
+  }
+  // Sort dates ascending for chronological display
+  var dateRows = Object.keys(perDate).sort().map(function(k){
+    var rec = perDate[k];
+    var hours = '';
+    if (rec.in && rec.out) {
+      var ip = rec.in.split(':'), op = rec.out.split(':');
+      var inMin  = parseInt(ip[0],10)*60 + parseInt(ip[1],10);
+      var outMin = parseInt(op[0],10)*60 + parseInt(op[1],10);
+      if (outMin < inMin) outMin += 24*60;
+      hours = ((outMin - inMin) / 60).toFixed(1);
+    }
+    return { date: rec.date, in: rec.in||'—', out: rec.out||'—', hours: hours, status: rec.in?'present':'absent' };
+  });
+
+  // 2. Summary via calcSalary for the month containing 'fromDate'
+  //    (single-month range gives accurate numbers; multi-month still works
+  //    but figures reflect whichever month the start date is in)
+  var fp = fromDate.split('-');
+  var monthIdx = parseInt(fp[1],10) - 1;
+  var yearIdx  = parseInt(fp[0],10);
+  var sal = calcSalary(e, [], monthIdx, yearIdx);
+
+  // 3. Payments in range
+  var payments = (paymentRecords[e.id] || []).filter(function(p){
+    if (!p.payDate) return false;
+    var pd = String(p.payDate).slice(0,10);
+    return pd >= fromDate && pd <= toDate;
+  });
+
+  return { dateRows: dateRows, salary: sal, payments: payments };
+}
+
+function generatePersonalCSV(e, fromDate, toDate, data) {
+  var rows = [];
+  // Title block
+  rows.push(['MiMi HR — Personal Report']);
+  rows.push(['Employee:', e.name + ' (' + e.id + ')']);
+  rows.push(['Role:', roleName(e.role)]);
+  rows.push(['Period:', fromDate + ' to ' + toDate]);
+  rows.push(['Generated:', new Date().toLocaleString('en-GB')]);
+  rows.push([]);
+  // Attendance section
+  rows.push(['ATTENDANCE / ການລົງເວລາ']);
+  rows.push(['Date / ວັນທີ', 'Clock In / ເຂົ້າ', 'Clock Out / ອອກ', 'Hours / ຊົ່ວໂມງ', 'Status / ສະຖານະ']);
+  if (data.dateRows.length === 0) {
+    rows.push(['(no records)']);
+  } else {
+    data.dateRows.forEach(function(r){
+      rows.push([r.date, r.in, r.out, r.hours, r.status]);
+    });
+  }
+  rows.push([]);
+  // Salary summary
+  rows.push(['SALARY / ເງິນເດືອນ']);
+  if (data.salary.payType === 'hourly') {
+    rows.push(['Pay Type', 'Part-time (hourly)']);
+    rows.push(['Hourly Rate', data.salary.hourlyRate]);
+    rows.push(['Hours Worked', data.salary.workedHours]);
+    rows.push(['Total Pay', data.salary.net]);
+  } else {
+    rows.push(['Base Salary', data.salary.base]);
+    rows.push(['Hourly Rate', data.salary.hourlyRate]);
+    rows.push(['Hours Worked', data.salary.workedHours]);
+    rows.push(['OT Hours', data.salary.otHours]);
+    rows.push(['OT Pay', data.salary.otPay]);
+    rows.push(['Late (min)', data.salary.lateMin]);
+    rows.push(['Late Deduction', data.salary.lateDed]);
+    rows.push(['Absent Days', data.salary.absentDays]);
+    rows.push(['Absent Deduction', data.salary.absentDed]);
+    rows.push(['Net Pay', data.salary.net]);
+  }
+  rows.push([]);
+  // Payments section
+  rows.push(['PAYMENTS / ການຈ່າຍ']);
+  rows.push(['Date / ວັນທີ', 'Amount / ຈຳນວນ', 'Method / ວິທີ', 'Bank / ທະນາຄານ', 'Note / ໝາຍເຫດ']);
+  if (data.payments.length === 0) {
+    rows.push(['(no payments in range)']);
+  } else {
+    data.payments.forEach(function(p){
+      rows.push([p.payDate, p.amount, p.method, p.bank||'', p.note||'']);
+    });
+    var totalPaid = data.payments.reduce(function(s,p){return s+(p.amount||0);}, 0);
+    rows.push(['', '', '', 'Total Paid:', totalPaid]);
+  }
+
+  var csv = rows.map(function(r){
+    return r.map(function(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(',');
+  }).join('\n');
+  var fname = 'MiMi_'+e.name.replace(/[^A-Za-z0-9_]/g,'_')+'_'+fromDate+'_to_'+toDate+'.csv';
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download = fname;
+  a.click();
+  toast('CSV exported ✓');
+}
+
+function generatePersonalPDF(e, fromDate, toDate, data) {
+  // Open a print-friendly window with formatted report.
+  // User then chooses "Save as PDF" in browser print dialog — works
+  // everywhere without bundling jsPDF.
+  var w = window.open('', '_blank', 'width=900,height=1000');
+  if (!w) { toast('Pop-up blocked — allow pop-ups to export PDF'); return; }
+  function fmt(n){ return (n||0).toLocaleString()+' LAK'; }
+  var attRowsHtml = data.dateRows.length
+    ? data.dateRows.map(function(r){
+        return '<tr><td>'+r.date+'</td><td>'+r.in+'</td><td>'+r.out+'</td><td>'+r.hours+'</td><td>'+r.status+'</td></tr>';
+      }).join('')
+    : '<tr><td colspan="5" style="text-align:center;color:#999">No records</td></tr>';
+
+  var salHtml;
+  if (data.salary.payType === 'hourly') {
+    salHtml =
+      '<tr><td>Pay Type / ປະເພດ</td><td><b>Part-time (hourly)</b></td></tr>' +
+      '<tr><td>Hourly Rate / ຄ່າຊົ່ວໂມງ</td><td>'+fmt(data.salary.hourlyRate)+'/hr</td></tr>' +
+      '<tr><td>Hours Worked / ຊົ່ວໂມງເຮັດ</td><td>'+data.salary.workedHours+' h</td></tr>' +
+      '<tr style="background:#FFF7E6"><td><b>Total Pay / ລວມຈ່າຍ</b></td><td><b>'+fmt(data.salary.net)+'</b></td></tr>';
+  } else {
+    salHtml =
+      '<tr><td>Base Salary / ເງິນເດືອນ</td><td>'+fmt(data.salary.base)+'</td></tr>' +
+      '<tr><td>Hourly Rate / ຄ່າຊົ່ວໂມງ</td><td>'+fmt(data.salary.hourlyRate)+'/hr</td></tr>' +
+      '<tr><td>Hours Worked / ຊົ່ວໂມງເຮັດ</td><td>'+data.salary.workedHours+' h</td></tr>' +
+      (parseFloat(data.salary.otHours)>0 ? '<tr><td>OT ('+data.salary.otHours+'h)</td><td style="color:#0a8f3d">+ '+fmt(data.salary.otPay)+'</td></tr>' : '') +
+      (data.salary.lateMin>0 ? '<tr><td>Late / ມາຊ້າ ('+data.salary.lateMin+' min)</td><td style="color:#c41e1e">- '+fmt(data.salary.lateDed)+'</td></tr>' : '') +
+      (data.salary.absentDays>0 ? '<tr><td>Absent / ຂາດວຽກ ('+data.salary.absentDays+' day)</td><td style="color:#c41e1e">- '+fmt(data.salary.absentDed)+'</td></tr>' : '') +
+      '<tr style="background:#FFF7E6"><td><b>Net Pay / ຈ່າຍສຸດທິ</b></td><td><b>'+fmt(data.salary.net)+'</b></td></tr>';
+  }
+
+  var paysHtml;
+  if (data.payments.length === 0) {
+    paysHtml = '<tr><td colspan="5" style="text-align:center;color:#999">No payments</td></tr>';
+  } else {
+    paysHtml = data.payments.map(function(p){
+      return '<tr><td>'+p.payDate+'</td><td>'+fmt(p.amount)+'</td><td>'+(p.method||'')+'</td><td>'+(p.bank||'')+'</td><td>'+(p.note||'')+'</td></tr>';
+    }).join('');
+    var total = data.payments.reduce(function(s,p){return s+(p.amount||0);}, 0);
+    paysHtml += '<tr style="background:#FFF7E6"><td colspan="4" style="text-align:right"><b>Total / ລວມ:</b></td><td><b>'+fmt(total)+'</b></td></tr>';
+  }
+
+  w.document.write(
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MiMi HR — '+e.name+'</title>'
+    + '<style>'
+    +   'body{font-family:Arial,sans-serif;color:#4A2E1F;padding:32px;max-width:760px;margin:0 auto}'
+    +   'h1{color:#E8821A;margin:0 0 4px;font-size:24px}'
+    +   'h2{color:#4A2E1F;font-size:14px;border-bottom:2px solid #E8821A;padding-bottom:5px;margin-top:24px}'
+    +   '.meta{color:#666;font-size:12px;margin-bottom:14px}'
+    +   '.info{background:#F5EDD8;padding:12px 14px;border-radius:8px;margin-bottom:14px;font-size:13px}'
+    +   'table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}'
+    +   'th,td{padding:6px 8px;border:1px solid #ddd;text-align:left}'
+    +   'th{background:#E8821A;color:#fff;font-weight:600}'
+    +   '.actions{text-align:center;margin-top:20px}'
+    +   '.actions button{background:#E8821A;color:#fff;border:none;padding:10px 22px;border-radius:6px;cursor:pointer;font-size:14px;margin:0 5px}'
+    +   '@media print{.actions{display:none}}'
+    + '</style></head><body>'
+    + '<h1>MiMi HR — Personal Report</h1>'
+    + '<div class="meta">Generated: '+new Date().toLocaleString('en-GB')+'</div>'
+    + '<div class="info">'
+    +   '<div><b>Employee / ພະນັກງານ:</b> '+e.name+' (#'+e.id+')</div>'
+    +   '<div><b>Role / ໜ້າທີ່:</b> '+roleName(e.role)+'</div>'
+    +   '<div><b>Period / ໄລຍະ:</b> '+fromDate+' to '+toDate+'</div>'
+    + '</div>'
+    + '<h2>Attendance / ການລົງເວລາ</h2>'
+    + '<table><thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Status</th></tr></thead>'
+    + '<tbody>'+attRowsHtml+'</tbody></table>'
+    + '<h2>Salary / ເງິນເດືອນ</h2>'
+    + '<table><tbody>'+salHtml+'</tbody></table>'
+    + '<h2>Payments / ການຈ່າຍ</h2>'
+    + '<table><thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Bank</th><th>Note</th></tr></thead>'
+    + '<tbody>'+paysHtml+'</tbody></table>'
+    + '<div class="actions">'
+    +   '<button onclick="window.print()">🖨 Save as PDF</button>'
+    +   '<button onclick="window.close()" style="background:#999">Close</button>'
+    + '</div>'
+    + '</body></html>'
+  );
+  w.document.close();
+  toast('PDF window opened — use Save as PDF');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🆕 v7.7 — RULES + INSTRUCTION PHOTOS (Round 7)
+// ═══════════════════════════════════════════════════════════════════
+
+function fetchRules(cb) {
+  if (!SHEET_URL) { if (cb) cb(); return; }
+  apiPost({ action: 'getRules' }, function(d){
+    if (d && d.ok && Array.isArray(d.rules)) {
+      RESTAURANT_RULES = d.rules.map(function(r){
+        return {
+          id:       r.id,
+          category: r.category || 'General',
+          rule_en:  r.rule_en  || '',
+          rule_lao: r.rule_lao || '',
+          order:    Number(r.order) || 0
+        };
+      }).sort(function(a,b){ return a.order - b.order; });
+      // Re-render Settings rules card if it's visible
+      if (typeof renderRulesCard === 'function') renderRulesCard();
+    }
+    if (cb) cb();
+  }, true);
+}
+
+function saveRulesToSheet() {
+  if (!SHEET_URL) { toast('No backend connected'); return; }
+  apiPost({
+    action: 'saveRules',
+    rules: JSON.stringify(RESTAURANT_RULES),
+    user: (currentUser && currentUser.name) || 'Owner'
+  }, function(d){
+    if (d && d.ok) {
+      logEvent('edit', 'Rules saved', d.count + ' rules');
+      toast('Rules saved ✓');
+    } else {
+      toast('Save failed: '+(d && d.error ? d.error : 'unknown'));
+    }
+  }, true);
+}
+
+function fetchInstructionPhotos(cb) {
+  if (!SHEET_URL) { if (cb) cb(); return; }
+  apiPost({ action: 'getInstructionPhotos' }, function(d){
+    if (d && d.ok && d.photos) {
+      instructionPhotos = d.photos;
+    }
+    if (cb) cb();
+  }, true);
+}
+
+// Rules helpers — used by Settings card editor
+function settAddRule() {
+  var cat = prompt('Category? (General, Kitchen, Service, Cashier, Cleaning, Safety)', 'General');
+  if (!cat) return;
+  cat = cat.trim();
+  RESTAURANT_RULES.push({
+    id: 'R'+Date.now(),
+    category: cat,
+    rule_en: 'New rule',
+    rule_lao: 'ກົດລະບຽບໃໝ່',
+    order: RESTAURANT_RULES.length + 1
+  });
+  if (typeof showView === 'function') showView('settings');
+}
+
+function settDeleteRule(i) {
+  if (!confirm('Delete this rule?')) return;
+  if (i < 0 || i >= RESTAURANT_RULES.length) return;  // 🔧 bounds check
+  // 🔧 Bug 6 fix: cancel any pending edit-save so it can't fire AFTER the delete
+  //              has reached the server, which would resurrect deleted rules.
+  if (window._rulesSaveTimer) {
+    clearTimeout(window._rulesSaveTimer);
+    window._rulesSaveTimer = null;
+  }
+  RESTAURANT_RULES.splice(i, 1);
+  // Re-number order
+  RESTAURANT_RULES.forEach(function(r, idx){ r.order = idx + 1; });
+  saveRulesToSheet();
+  if (typeof showView === 'function') showView('settings');
+}
+
+function settUpdateRuleField(i, field, val) {
+  if (!RESTAURANT_RULES[i]) return;
+  RESTAURANT_RULES[i][field] = String(val || '').trim();
+  // Auto-save on blur via debounce so we don't hammer the API
+  clearTimeout(window._rulesSaveTimer);
+  window._rulesSaveTimer = setTimeout(function(){ saveRulesToSheet(); }, 1000);
+}
+
+function renderRulesCard() {
+  // Triggered after fetchRules — only re-renders if Settings is currently open
+  // 🔧 Bug 7: don't clobber user's in-progress edit. If they're focused inside
+  //          a contenteditable in the rules card, skip the re-render.
+  var card = document.getElementById('rules-card');
+  if (!card) return;
+  var ae = document.activeElement;
+  if (ae && card.contains(ae) && ae.getAttribute('contenteditable') === 'true') {
+    return;  // user is editing — leave their work alone
+  }
+  if (typeof showView === 'function') {
+    showView('settings');
+  }
+}
+
+// Open a small modal for managing photos on one instruction item.
+// Owner / manager only — already gated where the button renders.
+function openInstructionPhotos(role, secIdx, itemIdx) {
+  var key = role+'|'+secIdx+'|'+itemIdx;
+  var current = (instructionPhotos[key] || []).map(function(p){ return p.url; });
+  var existing = document.getElementById('instr-photo-modal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = 'instr-photo-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  function buildBody() {
+    var bodyEl = document.getElementById('ipm-body');
+    if (!bodyEl) return;
+    var html = '';
+    current.forEach(function(url, i){
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--g50);border-radius:8px;margin-bottom:8px">'
+        + '<img src="'+escHtml(url)+'" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--g200)">'
+        + '<div style="flex:1;font-size:11px;color:var(--g600);word-break:break-all">'+escHtml(url.slice(0,50))+(url.length>50?'…':'')+'</div>'
+        + '<button onclick="ipmRemovePhoto('+i+')" style="background:none;border:1px solid var(--re);color:var(--re);border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer">Remove</button>'
+        + '</div>';
+    });
+    if (current.length < 3) {
+      html += '<label style="display:block;margin-top:10px;background:var(--g50);border:1px dashed var(--g300);border-radius:8px;padding:14px;text-align:center;cursor:pointer;font-size:12px;color:var(--g600)">'
+        + '📷 Tap to add photo ('+current.length+'/3)'
+        + '<input type="file" accept="image/*" id="ipm-file" style="display:none" onchange="ipmAddPhoto(this)">'
+        + '</label>';
+    } else {
+      html += '<div style="font-size:11px;color:var(--g400);text-align:center;margin-top:10px">Maximum 3 photos reached</div>';
+    }
+    bodyEl.innerHTML = html;
+  }
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:14px;padding:22px;max-width:440px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.25);max-height:90vh;overflow-y:auto">'
+    + '<div style="font-size:16px;font-weight:700;color:var(--br);margin-bottom:4px">📷 Instruction Photos</div>'
+    + '<div style="font-size:12px;color:var(--g400);margin-bottom:14px">'+escHtml(roleName(role))+' — Section '+(secIdx+1)+', Item '+(itemIdx+1)+'</div>'
+    + '<div id="ipm-body"></div>'
+    + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">'
+    +   '<button class="btn btn-out" onclick="document.getElementById(\'instr-photo-modal\').remove()">Cancel</button>'
+    +   '<button class="btn btn-pr" onclick="ipmSave(\''+escJs(role)+'\','+secIdx+','+itemIdx+')">💾 Save</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+  // Stash in temp window slot so handlers below can read
+  window._ipmCurrent = current;
+  window._ipmRebuild = buildBody;
+  window._ipmUploading = 0;  // 🔧 Bug 8 fix: reset upload counter on open
+  buildBody();
+}
+
+function ipmRemovePhoto(i) {
+  window._ipmCurrent.splice(i, 1);
+  window._ipmRebuild();
+}
+
+function ipmAddPhoto(input) {
+  if (!input.files || !input.files[0]) return;
+  if (window._ipmCurrent.length >= 3) { toast('Max 3 photos'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var dataUrl = e.target.result;
+    if (!SHEET_URL) {
+      // Local-only fallback — store base64 directly
+      window._ipmCurrent.push(dataUrl);
+      window._ipmRebuild();
+      return;
+    }
+    // 🔧 Bug 8 fix: track in-progress uploads so Save can wait for them
+    window._ipmUploading = (window._ipmUploading || 0) + 1;
+    // Upload to Drive then store URL
+    toast('Uploading photo...');
+    apiPost({
+      action: 'uploadPhoto',
+      dataUrl: dataUrl,
+      filename: 'instruction-photo-'+Date.now()
+    }, function(d){
+      window._ipmUploading = Math.max(0, (window._ipmUploading || 1) - 1);
+      if (d && d.ok && d.url) {
+        window._ipmCurrent.push(d.url);
+        window._ipmRebuild();
+        toast('Photo added ✓');
+      } else {
+        toast('Upload failed');
+      }
+    }, true);
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function ipmSave(role, secIdx, itemIdx) {
+  // 🔧 Bug 8 fix: don't save while photos are still uploading
+  if (window._ipmUploading && window._ipmUploading > 0) {
+    toast('Wait — '+window._ipmUploading+' photo(s) still uploading...');
+    return;
+  }
+  if (!SHEET_URL) {
+    var key = role+'|'+secIdx+'|'+itemIdx;
+    instructionPhotos[key] = window._ipmCurrent.map(function(url, i){ return { url: url, order: i }; });
+    document.getElementById('instr-photo-modal').remove();
+    if (typeof rhubSetTab === 'function') rhubSetTab('instructions');
+    toast('Saved (local only)');
+    return;
+  }
+  apiPost({
+    action: 'saveInstructionPhotos',
+    role: role,
+    section_idx: secIdx,
+    item_idx: itemIdx,
+    photos: JSON.stringify(window._ipmCurrent)
+  }, function(d){
+    if (d && d.ok) {
+      var key = role+'|'+secIdx+'|'+itemIdx;
+      instructionPhotos[key] = window._ipmCurrent.map(function(url, i){ return { url: url, order: i }; });
+      document.getElementById('instr-photo-modal').remove();
+      // Re-render the instructions tab so new photos appear
+      if (typeof rhubSetTab === 'function') rhubSetTab('instructions');
+      logEvent('edit', 'Instruction photos updated', role+' Section '+(secIdx+1)+' Item '+(itemIdx+1));
+      toast('Photos saved ✓');
+    } else {
+      toast('Save failed: '+(d && d.error ? d.error : 'unknown'));
+    }
+  }, true);
+}
+
 // ---- PUSH: CHECKLIST SUBMIT ----
 function pushChecklist(empId, name, items) {
   if (!SHEET_URL) return;
@@ -7083,6 +8023,9 @@ function startAutoSave() {
     if (typeof fetchShiftTypes === 'function') fetchShiftTypes();
     if (typeof fetchPayrollSettings === 'function') fetchPayrollSettings();
     if (typeof fetchWorkSchedule === 'function') fetchWorkSchedule();
+    if (typeof fetchPayments === 'function') fetchPayments();
+    if (typeof fetchRules === 'function') fetchRules();
+    if (typeof fetchInstructionPhotos === 'function') fetchInstructionPhotos();
     pullAllFromSheets(function(){
       renderDashboard(); renderEmployees(employees); updateLeaveBadge();
       showSyncDot('green');
@@ -7614,17 +8557,24 @@ function renderMonthly() {
     var otH     = +(otMinTotal/60).toFixed(1);
     var underH  = +(underMinTotal/60).toFixed(1);
 
-    // 🆕 SALARY: only base + manual adjustments (NO simulated OT or deductions)
-    var base = e.salary||0;
+    // 🆕 v7.2: Use real calcSalary for auto-computed OT/Late/Absent.
+    //          Manual adjustments still layer on top.
+    var calcSal = calcSalary(e, [], attMonth, attYear);
+    var base = calcSal.base;
     var manualAdj = (paymentAdjustments[e.id]||[]).filter(function(a){
-      // Only count adjustments for this month/year
       var d = a.date ? new Date(a.date) : new Date();
       return d.getMonth()===attMonth && d.getFullYear()===attYear;
     });
-    var manualAdditions   = manualAdj.filter(function(a){return a.type==='addition';}).reduce(function(s,a){return s+(a.amount||0);},0);
-    var manualDeductions  = manualAdj.filter(function(a){return a.type==='deduction';}).reduce(function(s,a){return s+(a.amount||0);},0);
-    var otPay    = manualAdditions;   // OT entered manually as addition
-    var totalDed = manualDeductions;
+    var manualAdditions  = manualAdj.filter(function(a){return a.type==='addition';}).reduce(function(s,a){return s+(a.amount||0);},0);
+    var manualDeductions = manualAdj.filter(function(a){return a.type==='deduction';}).reduce(function(s,a){return s+(a.amount||0);},0);
+    // Auto-computed pieces from calcSalary
+    var autoOTPay      = calcSal.otPay;
+    var autoLateDed    = calcSal.lateDed;
+    var autoAbsentDed  = calcSal.absentDed;
+    var autoUnderPay   = calcSal.underPay;
+    // Final totals = auto + manual
+    var otPay    = autoOTPay + manualAdditions;
+    var totalDed = autoLateDed + autoAbsentDed + autoUnderPay + manualDeductions;
     var net      = Math.max(0, base + otPay - totalDed);
 
     // KPI score
@@ -7661,11 +8611,11 @@ function renderMonthly() {
   var statsEl = document.getElementById('att-summary-stats');
   if(statsEl && !isEmp) {
     statsEl.innerHTML =
-      '<div class="stat s-or" style="padding:13px"><div class="stat-label">Total Base</div><div class="stat-val" style="font-size:16px">'+fmtLAK(totalBaseSalary)+'</div></div>'+
-      '<div class="stat s-gr" style="padding:13px"><div class="stat-label">Total OT Pay</div><div class="stat-val" style="font-size:16px;color:var(--gr)">+'+fmtLAK(totalOT)+'</div></div>'+
-      '<div class="stat s-re" style="padding:13px"><div class="stat-label">Total Deductions</div><div class="stat-val" style="font-size:16px;color:var(--re)">-'+fmtLAK(totalDeduct)+'</div></div>'+
-      '<div class="stat s-bl" style="padding:13px"><div class="stat-label">Total Net Pay</div><div class="stat-val" style="font-size:16px;color:var(--or)">'+fmtLAK(totalNetPay)+'</div></div>'+
-      '<div class="stat" style="padding:13px;border-top:3px solid var(--gr)"><div class="stat-label">Avg Present</div><div class="stat-val" style="font-size:16px">'+Math.round(totalPresent/(list.length||1))+'d</div></div>';
+      '<div class="stat s-or" style="padding:13px"><div class="stat-label"><span class="bi"><span class="bi-en">Total Base</span><span class="bi-lo">ລວມເງິນເດືອນ</span></span></div><div class="stat-val" style="font-size:16px">'+fmtLAK(totalBaseSalary)+'</div></div>'+
+      '<div class="stat s-gr" style="padding:13px"><div class="stat-label"><span class="bi"><span class="bi-en">Total OT Pay</span><span class="bi-lo">ລວມ OT</span></span></div><div class="stat-val" style="font-size:16px;color:var(--gr)">+'+fmtLAK(totalOT)+'</div></div>'+
+      '<div class="stat s-re" style="padding:13px"><div class="stat-label"><span class="bi"><span class="bi-en">Total Deductions</span><span class="bi-lo">ລວມຫັກ</span></span></div><div class="stat-val" style="font-size:16px;color:var(--re)">-'+fmtLAK(totalDeduct)+'</div></div>'+
+      '<div class="stat s-bl" style="padding:13px"><div class="stat-label"><span class="bi"><span class="bi-en">Total Net Pay</span><span class="bi-lo">ລວມຈ່າຍສຸດທິ</span></span></div><div class="stat-val" style="font-size:16px;color:var(--or)">'+fmtLAK(totalNetPay)+'</div></div>'+
+      '<div class="stat" style="padding:13px;border-top:3px solid var(--gr)"><div class="stat-label"><span class="bi"><span class="bi-en">Avg Present</span><span class="bi-lo">ສະເລ່ຍ</span></span></div><div class="stat-val" style="font-size:16px">'+Math.round(totalPresent/(list.length||1))+'d</div></div>';
   } else if(statsEl) {
     statsEl.style.display='none';
   }
@@ -7865,11 +8815,16 @@ function exportAttCSV(fromDate, toDate) {
     });
   }
 
-  // Work-day count in the range (Mon–Sat)
+  // Work-day count in the range (Mon–Sat) — 🆕 v7.6: cap at today
+  // (don't count future days as absent yet)
   var rangeWorkdays = 0;
   var d1 = new Date(fromDate+'T00:00:00+07:00');
   var d2 = new Date(toDate+'T00:00:00+07:00');
-  for (var dd = new Date(d1); dd <= d2; dd.setDate(dd.getDate()+1)) {
+  // Get "today" in Lao tz so workdays past today don't count as absent
+  var laoNowFn = (function(){ var n=new Date(); var lo=7*60; var po=n.getTimezoneOffset(); return new Date(n.getTime()+(lo+po)*60000); })();
+  var todayLao = new Date(laoNowFn.getFullYear(), laoNowFn.getMonth(), laoNowFn.getDate());
+  var endCap = d2 < todayLao ? d2 : todayLao;
+  for (var dd = new Date(d1); dd <= endCap; dd.setDate(dd.getDate()+1)) {
     if (dd.getDay() !== 0) rangeWorkdays++;
   }
 
@@ -7900,7 +8855,18 @@ function exportAttCSV(fromDate, toDate) {
     var absent = Math.max(0, rangeWorkdays - present - leave);
     var totalH = (totalMin/60).toFixed(1);
     var otH    = (otMin/60).toFixed(1);
-    var base = 0, otPay = 0, ded = 0, net = 0; // Level 2 will fill these
+    // 🆕 v7.2: Use real salary calc with current month context
+    var monthIdxForExport, yearIdxForExport;
+    try {
+      var fp = String(fromDate).split('-');
+      yearIdxForExport  = parseInt(fp[0],10);
+      monthIdxForExport = parseInt(fp[1],10) - 1;
+    } catch(eEx) { monthIdxForExport = attMonth; yearIdxForExport = attYear; }
+    var sal = calcSalary(e, [], monthIdxForExport, yearIdxForExport);
+    var base  = sal.base;
+    var otPay = sal.otPay;
+    var ded   = sal.lateDed + sal.absentDed + sal.underPay;
+    var net   = sal.net;
     var hist = kpiData[e.id] || [];
     var avg = hist.length ? Math.round(hist.reduce(function(a,h){return a+h.pct;},0)/hist.length) : 0;
     return [e.name, roleName(e.role), present, absent, leave, lateMin, otH, totalH, base, otPay, ded, net, avg+'%'];
@@ -9294,10 +10260,11 @@ function showRoleHub(role) {
     + (canEdit?'<button onclick="document.getElementById(\'role-hub-overlay\').remove();editInstructions(\''+role+'\')" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:7px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer">✏️ Edit</button>':'')
     + '<button onclick="document.getElementById(\'role-hub-overlay\').remove()" style="background:rgba(0,0,0,.2);border:none;color:#fff;border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;margin-left:8px;flex-shrink:0">×</button>'
     + '</div>'
-    + '<div style="display:flex;border-bottom:2px solid var(--g100)">'
-    + '<div id="rhub-tab-tasks" onclick="rhubSetTab(\'tasks\')" style="flex:1;padding:11px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;color:var(--or);border-bottom:2.5px solid var(--or);margin-bottom:-2px">📋 Tasks ('+myTasks.length+')</div>'
-    + '<div id="rhub-tab-instructions" onclick="rhubSetTab(\'instructions\')" style="flex:1;padding:11px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;color:var(--g400);border-bottom:2.5px solid transparent;margin-bottom:-2px">📖 Instructions</div>'
-    + '<div id="rhub-tab-staff" onclick="rhubSetTab(\'staff\')" style="flex:1;padding:11px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;color:var(--g400);border-bottom:2.5px solid transparent;margin-bottom:-2px">👥 Staff ('+roleEmps.length+')</div>'
+    + '<div style="display:flex;border-bottom:2px solid var(--g100);overflow-x:auto;-webkit-overflow-scrolling:touch">'
+    + '<div id="rhub-tab-tasks" onclick="rhubSetTab(\'tasks\')" style="flex:1;min-width:90px;padding:11px 8px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;color:var(--or);border-bottom:2.5px solid var(--or);margin-bottom:-2px;white-space:nowrap">📋 Tasks ('+myTasks.length+')</div>'
+    + '<div id="rhub-tab-instructions" onclick="rhubSetTab(\'instructions\')" style="flex:1;min-width:90px;padding:11px 8px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;color:var(--g400);border-bottom:2.5px solid transparent;margin-bottom:-2px;white-space:nowrap">📖 Instructions</div>'
+    + '<div id="rhub-tab-rules" onclick="rhubSetTab(\'rules\')" style="flex:1;min-width:80px;padding:11px 8px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;color:var(--g400);border-bottom:2.5px solid transparent;margin-bottom:-2px;white-space:nowrap">⚖️ Rules</div>'
+    + '<div id="rhub-tab-staff" onclick="rhubSetTab(\'staff\')" style="flex:1;min-width:80px;padding:11px 8px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;color:var(--g400);border-bottom:2.5px solid transparent;margin-bottom:-2px;white-space:nowrap">👥 Staff ('+roleEmps.length+')</div>'
     + '</div>'
     + '<div id="rhub-content" style="padding:16px;max-height:70vh;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>'
     + '</div>';
@@ -9308,7 +10275,7 @@ function showRoleHub(role) {
 }
 
 function rhubSetTab(tab) {
-  ['tasks','instructions','staff'].forEach(function(t){
+  ['tasks','instructions','rules','staff'].forEach(function(t){
     var el = document.getElementById('rhub-tab-'+t);
     if (!el) return;
     el.style.color = t===tab ? 'var(--or)' : 'var(--g400)';
@@ -9353,20 +10320,70 @@ function rhubSetTab(tab) {
       html='<div style="text-align:center;padding:24px;color:var(--g400)"><div style="font-size:32px;margin-bottom:8px">📋</div><div style="font-size:13px;font-weight:500">No instructions yet</div>'
         +(isAdmin?'<button onclick="document.getElementById(\'role-hub-overlay\').remove();editInstructions(\''+role+'\')" style="margin-top:12px;background:var(--or);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:12px;cursor:pointer">+ Add Instructions</button>':'')+'</div>';
     } else {
-      roleData.sections.forEach(function(sec){
+      roleData.sections.forEach(function(sec, secIdx){
         html+='<div style="margin-bottom:14px">'
           +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:'+color+';border-bottom:1.5px solid '+color+'33;padding-bottom:5px;margin-bottom:8px">'+sec.heading.en
           +'<span style="font-family:\'Noto Sans Lao\',sans-serif;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:var(--g400);margin-left:6px">'+sec.heading.lo+'</span></div>';
-        sec.items.forEach(function(item){
+        sec.items.forEach(function(item, itemIdx){
+          // 🆕 v7.7: photos lookup — owner+manager get add-button, employees view-only
+          var photoKey = role+'|'+secIdx+'|'+itemIdx;
+          var photos   = (instructionPhotos[photoKey] || []).map(function(p){ return p.url; });
+          var photosHtml = '';
+          if (photos.length) {
+            photosHtml = '<div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap">';
+            photos.forEach(function(url){
+              photosHtml += '<img src="'+escHtml(url)+'" onclick="window.open(\''+escJs(url)+'\',\'_blank\')" style="width:54px;height:54px;object-fit:cover;border-radius:6px;border:1px solid var(--g200);cursor:pointer" title="Tap to view">';
+            });
+            photosHtml += '</div>';
+          }
+          var photoBtn = isAdmin
+            ? '<button onclick="openInstructionPhotos(\''+escJs(role)+'\','+secIdx+','+itemIdx+')" style="background:none;border:1px dashed var(--g300);color:var(--g400);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;margin-top:4px">📷 '+(photos.length?'Edit ('+photos.length+'/3)':'Add Photos')+'</button>'
+            : '';
           html+='<div style="display:flex;gap:8px;padding:9px 12px;background:#fff;border-radius:var(--rads);border:1px solid var(--g100);margin-bottom:6px">'
             +'<div style="color:'+color+';flex-shrink:0;margin-top:2px">▸</div>'
-            +'<div><div style="font-size:13px;color:var(--br);line-height:1.4">'+item.en+'</div>'
+            +'<div style="flex:1"><div style="font-size:13px;color:var(--br);line-height:1.4">'+item.en+'</div>'
             +'<div style="font-family:\'Noto Sans Lao\',sans-serif;font-size:11px;color:var(--g400);margin-top:3px">'+item.lo+'</div>'
+            + photosHtml
+            + photoBtn
             +'</div></div>';
         });
         html+='</div>';
       });
       if(isAdmin) html+='<button onclick="document.getElementById(\'role-hub-overlay\').remove();editInstructions(\''+role+'\')" style="width:100%;background:var(--g50);border:1px solid var(--g200);color:var(--br);border-radius:9px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px">✏️ Edit Instructions</button>';
+    }
+  }
+
+  if (tab==='rules') {
+    // 🆕 v7.7: Rules pulled from RESTAURANT_RULES (loaded from Sheet on login)
+    if (!RESTAURANT_RULES.length) {
+      html = '<div style="text-align:center;padding:24px;color:var(--g400)"><div style="font-size:32px;margin-bottom:8px">⚖️</div><div style="font-size:13px;font-weight:500"><span class="bi"><span class="bi-en">No rules yet</span><span class="bi-lo">ຍັງບໍ່ມີກົດລະບຽບ</span></span></div>'
+        + (isAdmin ? '<button onclick="document.getElementById(\'role-hub-overlay\').remove();showView(\'settings\');setTimeout(function(){var r=document.getElementById(\'rules-card\');if(r)r.scrollIntoView();},100)" style="margin-top:12px;background:var(--or);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:12px;cursor:pointer">⚙️ Manage Rules in Settings</button>' : '')
+        + '</div>';
+    } else {
+      // Group rules by category
+      var byCat = {};
+      RESTAURANT_RULES.forEach(function(r){
+        var c = r.category || 'General';
+        if (!byCat[c]) byCat[c] = [];
+        byCat[c].push(r);
+      });
+      var catIcons = { 'General':'🌟', 'Kitchen':'🍳', 'Service':'🍽️', 'Cashier':'💵', 'Cleaning':'🧹', 'Safety':'🛡️' };
+      // Show General + role-specific category if it exists
+      Object.keys(byCat).forEach(function(cat){
+        var rules = byCat[cat];
+        var icon = catIcons[cat] || '📌';
+        html += '<div style="margin-bottom:14px">'
+          + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--or);border-bottom:1.5px solid #E8821A33;padding-bottom:5px;margin-bottom:8px">'+icon+' '+cat+'</div>';
+        rules.forEach(function(r){
+          html += '<div style="display:flex;gap:8px;padding:9px 12px;background:#fff;border-radius:var(--rads);border:1px solid var(--g100);margin-bottom:6px">'
+            + '<div style="color:var(--or);flex-shrink:0;margin-top:2px">▸</div>'
+            + '<div><div style="font-size:13px;color:var(--br);line-height:1.4">'+escHtml(r.rule_en||'')+'</div>'
+            + '<div style="font-family:\'Noto Sans Lao\',sans-serif;font-size:11px;color:var(--g400);margin-top:3px">'+escHtml(r.rule_lao||'')+'</div>'
+            + '</div></div>';
+        });
+        html += '</div>';
+      });
+      if (isAdmin) html += '<button onclick="document.getElementById(\'role-hub-overlay\').remove();showView(\'settings\');setTimeout(function(){var r=document.getElementById(\'rules-card\');if(r)r.scrollIntoView();},100)" style="width:100%;background:var(--g50);border:1px solid var(--g200);color:var(--br);border-radius:9px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;margin-top:6px">⚙️ Manage Rules in Settings</button>';
     }
   }
 
@@ -9434,7 +10451,7 @@ function pushShiftTypes() {
 //          Defaults match what Round 1 already used internally.
 var PAYROLL = {
   otRate:       1.0,   // OT pay multiplier (1x = flat, 1.5x = time-and-half)
-  daysPerMonth: 26,    // workdays per month (used for hourly rate)
+  daysPerMonth: 30,    // 🆕 v7.4: Lao law default (was 26)
   hoursPerDay:  8,     // standard hours per day
   otBufferMin:  30,    // minutes after standard end before OT starts counting
   workdayStart: '08:00',
@@ -9690,7 +10707,7 @@ function renderTeamSchedule(weekKey, weekDays) {
     html += '<div class="erow">';
     html += '<div class="eav" style="background:'+emp.color+';width:28px;height:28px;font-size:11px">'+inits(emp.name)+'</div>';
     html += '<div><div style="font-size:12px;font-weight:500">'+emp.name+'</div>';
-    html += '<div style="font-size:10px;color:var(--g400)">'+emp.role+'</div></div></div></td>';
+    html += '<div style="font-size:10px;color:var(--g400)">'+roleName(emp.role)+'</div></div></div></td>';
 
     weekDays.forEach(function(d) {
       var dayKey = d.key;
@@ -10273,12 +11290,12 @@ function renderSettings() {
     var el = document.createElement('div');
     el.style.cssText = 'padding:10px 12px;background:'+(has?'#EDFAF1':'var(--g50)')+';border:1px solid '+(has?'var(--gr)':'var(--g200)')+';border-radius:8px;cursor:pointer';
     el.dataset.role = role;
-    el.innerHTML = '<div style="font-size:12px;font-weight:600;color:var(--br)">'+roleName(role)+'</div>'
+    el.innerHTML = '<div style="font-size:12px;font-weight:600;color:var(--br)">'+escHtml(roleName(role))+'</div>'
       + '<div style="font-size:10px;color:'+(has?'var(--gr)':'var(--g400)')+';margin-top:3px">'+(has?'✅ '+cnt+' items':'✏️ Add instructions')+'</div>';
     el.onclick = function(){ editInstructions(this.dataset.role); };
     // Can't appendChild in string html, so use data attribute approach
-    html += '<div data-role="'+role+'" onclick="editInstructions(this.dataset.role)" style="padding:10px 12px;background:'+(has?'#EDFAF1':'var(--g50)')+';border:1px solid '+(has?'var(--gr)':'var(--g200)')+';border-radius:8px;cursor:pointer">'
-      + '<div style="font-size:12px;font-weight:600;color:var(--br)">'+roleName(role)+'</div>'
+    html += '<div data-role="'+escHtml(role)+'" onclick="editInstructions(this.dataset.role)" style="padding:10px 12px;background:'+(has?'#EDFAF1':'var(--g50)')+';border:1px solid '+(has?'var(--gr)':'var(--g200)')+';border-radius:8px;cursor:pointer">'
+      + '<div style="font-size:12px;font-weight:600;color:var(--br)">'+escHtml(roleName(role))+'</div>'
       + '<div style="font-size:10px;color:'+(has?'var(--gr)':'var(--g400)')+';margin-top:3px">'+(has?'✅ '+cnt+' items':'✏️ Add instructions')+'</div>'
       + '</div>';
   });
@@ -10358,6 +11375,45 @@ function renderSettings() {
   goBtn.className = 'btn btn-out'; goBtn.style.cssText='font-size:11px;padding:6px 12px';
   goBtn.textContent = 'Manage →'; goBtn.onclick = function(){ showView('checklist'); };
   html += '</div></div>';
+
+  // 🆕 v7.7 ── RESTAURANT RULES ──
+  html += '<div id="rules-card" style="background:#fff;border-radius:12px;border:1px solid var(--g100);padding:18px;margin-bottom:14px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+  html += '<div><div style="font-size:14px;font-weight:700;color:var(--br)">⚖️ Restaurant Rules / ກົດລະບຽບຮ້ານ</div>';
+  html += '<div style="font-size:11px;color:var(--g400)">Visible to all staff in their Tasks page → Rules tab</div></div>';
+  if (isOwner) html += '<button class="btn btn-pr" onclick="settAddRule()" style="font-size:11px;padding:6px 12px">+ Add Rule</button>';
+  html += '</div>';
+  // Group by category
+  var rulesByCat = {};
+  RESTAURANT_RULES.forEach(function(r){
+    var c = r.category || 'General';
+    if (!rulesByCat[c]) rulesByCat[c] = [];
+    rulesByCat[c].push(r);
+  });
+  var ruleIcons = { 'General':'🌟', 'Kitchen':'🍳', 'Service':'🍽️', 'Cashier':'💵', 'Cleaning':'🧹', 'Safety':'🛡️' };
+  var ruleCats = Object.keys(rulesByCat);
+  if (!ruleCats.length) {
+    html += '<div style="font-size:12px;color:var(--g400);text-align:center;padding:14px">No rules yet — click "+ Add Rule" to start</div>';
+  } else {
+    ruleCats.forEach(function(cat){
+      html += '<div style="margin-bottom:12px">';
+      html += '<div style="font-size:11px;font-weight:700;color:var(--or);text-transform:uppercase;margin-bottom:6px">'+(ruleIcons[cat]||'📌')+' '+cat+'</div>';
+      rulesByCat[cat].forEach(function(r){
+        var idx = RESTAURANT_RULES.indexOf(r);
+        html += '<div style="display:flex;gap:8px;padding:8px 12px;background:var(--g50);border:1px solid var(--g100);border-radius:8px;margin-bottom:6px">'
+          + '<span style="color:var(--or);font-size:14px;flex-shrink:0;margin-top:1px">▸</span>'
+          + '<div style="flex:1">'
+          +   '<div contenteditable="'+(isOwner?'true':'false')+'" onblur="settUpdateRuleField('+idx+',\'rule_en\',this.innerText)" style="font-size:12px;color:var(--br);outline:none;min-height:18px">'+escHtml(r.rule_en||'')+'</div>'
+          +   '<div contenteditable="'+(isOwner?'true':'false')+'" onblur="settUpdateRuleField('+idx+',\'rule_lao\',this.innerText)" style="font-family:\'Noto Sans Lao\',sans-serif;font-size:11px;color:var(--g400);outline:none;min-height:16px;margin-top:2px">'+escHtml(r.rule_lao||'')+'</div>'
+          + '</div>'
+          + (isOwner ? '<span onclick="settDeleteRule('+idx+')" style="cursor:pointer;color:var(--g300);font-size:16px;line-height:1;flex-shrink:0">×</span>' : '')
+          + '</div>';
+      });
+      html += '</div>';
+    });
+  }
+  if (isOwner) html += '<button class="btn btn-pr" onclick="saveRulesToSheet()" style="margin-top:6px;font-size:11px;padding:6px 12px">💾 Save All</button>';
+  html += '</div>';
 
   // ── RECRUITMENT TERMS ──
   html += '<div data-terms-header style="background:#fff;border-radius:12px;border:1px solid var(--g100);padding:18px;margin-bottom:14px">';
