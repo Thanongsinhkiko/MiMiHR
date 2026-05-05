@@ -678,7 +678,7 @@ input[type=file]{display:none;}
     <div><div class="page-title"><span class="bi"><span class="bi-en">Attendance Log</span><span class="bi-lo">ບັນທຶກການຂຶ້ນວຽກ</span></span></div><div class="page-sub" id="att-sub">Monthly records</div></div>
     <div class="tbar-right">
       <button class="btn btn-out" id="btn-visibility" onclick="toggleVisibilityPanel()" style="display:none">&#128065; Visibility</button>
-      <button class="btn btn-out" onclick="exportAttCSV()"><span class="bi"><span class="bi-en"><span class="bi"><span class="bi-en">Export CSV</span><span class="bi-lo">ສົ່ງອອກ</span></span></span><span class="bi-lo">ສົ່ງອອກ</span></span></button>
+      <button class="btn btn-out" onclick="openExportDialog()"><span class="bi"><span class="bi-en">Export CSV</span><span class="bi-lo">ສົ່ງອອກ CSV</span></span></button>
     </div>
   </div>
 
@@ -1637,8 +1637,52 @@ function toast(msg) {
 function logEvent(type, action, detail, result) {
   result = result || 'success';
   var u = currentUser ? currentUser.name : 'System';
+  // Local cache (so UI updates instantly without waiting for round-trip)
   activityLog.unshift({ id: activityLog.length+1, timestamp: new Date(), type:type, action:action, detail:detail, result:result, user:u });
   updateLogStats();
+  // 🆕 v7.0: persist EVERY event to Sheet "ActivityLog" so we never lose history.
+  //          Apps Script `logEvent` already accepts {type, action, detail, result, user}.
+  if (SHEET_URL) {
+    try {
+      apiPost({
+        action: 'logEvent',
+        type: type,
+        action_name: action,        // separate field name to avoid clashing with the route 'action'
+        detail: detail || '',
+        result: result,
+        user: u
+      }, null, true);
+    } catch(e) { /* swallow — local log still has it */ }
+  }
+}
+
+// 🆕 v7.0: Pull persisted activity log from Sheet — used to restore history
+//          after refresh / when Manager looks back at past activities.
+function fetchActivityLog(cb) {
+  if (!SHEET_URL) { if (cb) cb(); return; }
+  apiPost({ action: 'getLog', limit: 500 }, function(d){
+    if (d && d.ok && Array.isArray(d.log)) {
+      // Merge: replace local cache with server view (server is the source of truth for history).
+      // Convert timestamp strings to Date objects so renderLog formats them correctly.
+      activityLog = d.log.map(function(r, i){
+        var ts = r.timestamp ? new Date(r.timestamp) : new Date();
+        return {
+          id: i + 1,
+          timestamp: isNaN(ts.getTime()) ? new Date() : ts,
+          type: r.type || 'system',
+          action: r.action || '',
+          detail: r.detail || '',
+          result: r.result || 'success',
+          user: r.user || 'System'
+        };
+      });
+      updateLogStats();
+      // Re-render if Activity Log view is currently open
+      var active = document.querySelector('.view.active');
+      if (active && active.id === 'view-actlog' && typeof renderLog === 'function') renderLog();
+    }
+    if (cb) cb();
+  }, true);
 }
 function updateLogStats() {
   var c = { login:0, clock:0, leave:0, edit:0 };
@@ -1866,7 +1910,7 @@ function showView(id) {
   if(id==='settings')   renderSettings();
   
   if(id==='clockin')    renderClockIn();
-  if(id==='actlog')     renderLog();
+  if(id==='actlog')     { renderLog(); if(typeof fetchActivityLog==='function') fetchActivityLog(); }
   if(id==='checklist')  renderChecklist();
   if(id==='standardcheck') renderStandardCheck();
   if(id==='kpi')        renderKPI();
@@ -5345,14 +5389,52 @@ function renderLeaveList(isEmp, canApprove, myEmpId) {
     var approveHtml = (canApprove&&r.status==='pending')
       ? '<div style="display:flex;gap:5px;margin-top:8px"><button class="btn-sm bapp" onclick="doApprove(\''+r.id+'\',true)">&#10003; ອະນຸມັດ</button><button class="btn-sm brej" onclick="doApprove(\''+r.id+'\',false)">&#10007; ປະຕິເສດ</button></div>'
       : '';
-    var commentHtml = r.comment ? '<div style="font-size:11px;color:var(--g600);margin-top:5px;font-style:italic">Manager: '+r.comment+'</div>' : '';
+    var commentText = r.comment || r.managerComment || '';
+    var commentHtml = commentText ? '<div style="font-size:11px;color:var(--g600);margin-top:5px;font-style:italic">Manager: '+commentText+'</div>' : '';
+    // 🆕 v6.9: bilingual reason label + show submittedAt + approver + approved/rejected at
+    var reasonHtml = r.reason
+      ? '<div style="font-size:11px;color:var(--g400);margin-top:6px"><span class="bi"><span class="bi-en">Reason</span><span class="bi-lo">ເຫດຜົນ</span></span>:</div>'
+        + '<div style="font-size:12px;color:var(--g600);background:var(--g50);border-radius:6px;padding:6px 10px;margin-top:3px;border-left:3px solid var(--or)">"'+r.reason+'"</div>'
+      : '';
+    var metaParts = [];
+    if (r.submittedAt) {
+      var subTime = '';
+      try {
+        var dS = new Date(r.submittedAt);
+        if (!isNaN(dS.getTime())) {
+          var lo = 7*60, po = dS.getTimezoneOffset();
+          var dL = new Date(dS.getTime()+(lo+po)*60000);
+          subTime = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2)
+                  + ' ' + ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+        }
+      } catch(e) {}
+      if (subTime) metaParts.push('Submitted: '+subTime);
+    }
+    if (r.status !== 'pending' && r.updatedAt) {
+      var actTime = '';
+      try {
+        var dU = new Date(r.updatedAt);
+        if (!isNaN(dU.getTime())) {
+          var lo2 = 7*60, po2 = dU.getTimezoneOffset();
+          var dL2 = new Date(dU.getTime()+(lo2+po2)*60000);
+          actTime = dL2.getFullYear()+'-'+('0'+(dL2.getMonth()+1)).slice(-2)+'-'+('0'+dL2.getDate()).slice(-2)
+                  + ' ' + ('0'+dL2.getHours()).slice(-2)+':'+('0'+dL2.getMinutes()).slice(-2);
+        }
+      } catch(e) {}
+      if (actTime) metaParts.push((r.status==='approved'?'Approved':'Rejected')+': '+actTime);
+    }
+    if (r.approver) metaParts.push('By: '+r.approver);
+    var metaHtml = metaParts.length
+      ? '<div style="font-size:10px;color:var(--g400);margin-top:5px">'+metaParts.join(' · ')+'</div>'
+      : '';
     return '<div style="background:#fff;border-radius:var(--rads);padding:13px 16px;border:1px solid var(--g100);margin-bottom:9px">'+
       '<div style="display:flex;align-items:flex-start;gap:11px">'+
       '<div style="font-size:20px">'+icon+'</div>'+
       '<div style="flex:1">'+
       '<div style="font-size:13px;font-weight:600">'+r.name+'</div>'+
       '<div style="font-size:11px;color:var(--g400);margin-top:2px">'+r.type+' &bull; '+dateStr+'</div>'+
-      '<div style="font-size:12px;color:var(--g600);background:var(--g50);border-radius:6px;padding:6px 10px;margin-top:6px;border-left:3px solid var(--or)">"'+(r.reason||'')+'"</div>'+
+      reasonHtml+
+      metaHtml+
       commentHtml+approveHtml+
       '</div>'+
       '<span class="badge '+sc+'">'+r.status+'</span>'+
@@ -5363,6 +5445,9 @@ function renderLeaveList(isEmp, canApprove, myEmpId) {
 function doApprove(id, approved) {
   var r = leaveRequests.find(function(x){return x.id===id;}); if (!r) return;
   r.status = approved ? 'approved' : 'rejected';
+  // 🆕 v6.9: stamp approver + time locally so the card shows them right away
+  r.approver = (currentUser && currentUser.name) || '';
+  r.updatedAt = new Date().toISOString();
   logEvent('approval', approved?'Leave approved':'Leave rejected', r.name+' - '+r.type);
   pushLeaveStatus(id, r.status, currentUser.name);
   renderDashboard(); renderLeaveView(); updateLeaveBadge();
@@ -6834,6 +6919,8 @@ function startAutoSave() {
   if(SHEET_URL) {
     // 🆕 v6.7: load persisted shift types so user edits survive refresh
     if (typeof fetchShiftTypes === 'function') fetchShiftTypes();
+    if (typeof fetchPayrollSettings === 'function') fetchPayrollSettings();
+    if (typeof fetchWorkSchedule === 'function') fetchWorkSchedule();
     pullAllFromSheets(function(){
       renderDashboard(); renderEmployees(employees); updateLeaveBadge();
       showSyncDot('green');
@@ -7124,11 +7211,11 @@ function setupNavLabels() {
   var navMap = {
     owner:   [['dashboard',t('nav.dashboard'),0],['employees',t('nav.employees'),0],['recruit',t('nav.recruit'),0],['clockin',t('nav.clockin'),0],
               ['leave',t('nav.leave'),pending],['checklist',t('nav.checklist'),0],['kpi',t('nav.kpi'),0],
-              ['attendance',t('nav.attendance'),0],['schedule',t('nav.schedule'),0],['qr',t('nav.qr'),0],['actlog',t('nav.actlog'),0],
+              ['attendance',t('nav.attendance'),0],['schedule',t('nav.schedule'),0],['actlog',t('nav.actlog'),0],
               ['settings','⚙️ Settings',0]],
     manager: [['dashboard',t('nav.dashboard'),0],['employees',t('nav.employees'),0],['recruit',t('nav.recruit'),0],['clockin',t('nav.clockin'),0],
               ['leave',t('nav.leave'),pending],['checklist',t('nav.checklist'),0],['kpi',t('nav.kpi'),0],
-              ['attendance',t('nav.attendance'),0],['schedule',t('nav.schedule'),0],['qr',t('nav.qr'),0],['actlog',t('nav.actlog'),0],
+              ['attendance',t('nav.attendance'),0],['schedule',t('nav.schedule'),0],['actlog',t('nav.actlog'),0],
               ['settings','⚙️ Settings',0]],
     employee:[['clockin',t('nav.clockin'),0],['leave',t('nav.myleave'),0],
               ['checklist',t('nav.mychecklist'),0],['schedule',t('nav.myschedule'),0],['actlog',t('nav.myactivity'),0],]
@@ -7217,7 +7304,7 @@ function refreshPage() {
     if (id==='leave')      renderLeaveView();
     if (id==='attendance') renderMonthly();
     if (id==='kpi')        renderKPI();
-    if (id==='actlog')     renderLog();
+    if (id==='actlog')     { renderLog(); if(typeof fetchActivityLog==='function') fetchActivityLog(); }
     if (id==='checklist')  renderChecklist();
     updateLeaveBadge();
     toast('Refreshed!');
@@ -7287,11 +7374,53 @@ function renderMonthly() {
     ? employees.filter(function(e){ return e.id===currentUser.empId; })
     : employees;
 
-  // 🆕 NO MORE SIMULATED DATA — show real numbers only (zero if no input)
-  // Owner manually enters: OT amount in LAK, manual adjustments
-  // Attendance days come from real attendance log (currently empty until clock-ins happen)
+  // 🆕 v6.8: derive real present/late/OT counts from the attendance log
+  //          for the selected month. Same shape as exportAttCSV uses.
   var workDays = 26;
   var totalBaseSalary=0, totalNetPay=0, totalOT=0, totalDeduct=0, totalPresent=0;
+  var perEmpMonth = {};
+  if (Array.isArray(attendanceLog)) {
+    attendanceLog.forEach(function(rEv){
+      if (!rEv || !rEv.empId || !rEv.date) return;
+      var ymd = String(rEv.date).slice(0,10);
+      var parts = ymd.split('-');
+      if (parts.length < 3) return;
+      var yY = parseInt(parts[0],10), mM = parseInt(parts[1],10) - 1;
+      if (yY !== attYear || mM !== attMonth) return;
+      if (!perEmpMonth[rEv.empId]) perEmpMonth[rEv.empId] = {};
+      if (!perEmpMonth[rEv.empId][ymd]) perEmpMonth[rEv.empId][ymd] = { in:null, out:null };
+      var hhmm = '';
+      if (rEv.timestamp) {
+        var dT = new Date(rEv.timestamp);
+        if (!isNaN(dT.getTime())) {
+          var laoOff = 7 * 60;
+          var locOff = dT.getTimezoneOffset();
+          var dL = new Date(dT.getTime() + (laoOff + locOff) * 60000);
+          hhmm = ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+        }
+      }
+      if (rEv.action === 'clockIn'  && !perEmpMonth[rEv.empId][ymd].in)  perEmpMonth[rEv.empId][ymd].in  = hhmm;
+      if (rEv.action === 'clockOut') perEmpMonth[rEv.empId][ymd].out = hhmm;
+    });
+  }
+  // Workdays in month (Mon–Sat)
+  var firstDay  = new Date(attYear, attMonth, 1);
+  var nextMonth = new Date(attYear, attMonth+1, 1);
+  var workdaysInMonth = 0;
+  for (var dD = new Date(firstDay); dD < nextMonth; dD.setDate(dD.getDate()+1)) {
+    if (dD.getDay() !== 0) workdaysInMonth++;
+  }
+  // Don't count workdays past today as "absent"
+  var laoNow = (function(){
+    var n = new Date(); var lo = 7*60; var po = n.getTimezoneOffset();
+    return new Date(n.getTime()+(lo+po)*60000);
+  })();
+  var workdaysToDate = 0;
+  for (var dE = new Date(firstDay); dE < nextMonth && dE <= laoNow; dE.setDate(dE.getDate()+1)) {
+    if (dE.getDay() !== 0) workdaysToDate++;
+  }
+  var STD_WORK_HOURS = 8;
+  var STD_START_MIN  = 8 * 60;
 
   var rows = list.map(function(e){
     // Real attendance counts — count from actual leave requests for this month
@@ -7299,12 +7428,29 @@ function renderMonthly() {
       return r.empId===e.id && r.status!=='rejected' &&
         (function(){var d=new Date(r.fromDate||r.from||'');return d.getMonth()===attMonth&&d.getFullYear()===attYear;})();
     }).length;
-    // 🆕 Present/absent counts: empty until real attendance log integration is wired up
-    var present = 0;
-    var absent  = 0;
-    var lateN   = 0;
-    var otH     = 0;
-    var underH  = 0;
+    // 🆕 v6.8: derive from attendanceLog
+    var byDate = perEmpMonth[e.id] || {};
+    // 🆕 v6.9: Late tracked in MINUTES (no grace per A1) — stays cumulative
+    var present = 0, lateMinTotal = 0, otMinTotal = 0, underMinTotal = 0;
+    Object.keys(byDate).forEach(function(ymd){
+      var rec = byDate[ymd];
+      if (!rec.in) return;
+      present++;
+      var ip = rec.in.split(':');
+      var inMin = parseInt(ip[0],10)*60 + parseInt(ip[1],10);
+      if (inMin > STD_START_MIN) lateMinTotal += (inMin - STD_START_MIN);
+      if (rec.out) {
+        var op = rec.out.split(':');
+        var outMin = parseInt(op[0],10)*60 + parseInt(op[1],10);
+        if (outMin < inMin) outMin += 24*60;
+        var worked = outMin - inMin;
+        if (worked > STD_WORK_HOURS*60) otMinTotal   += (worked - STD_WORK_HOURS*60);
+        if (worked < STD_WORK_HOURS*60) underMinTotal += (STD_WORK_HOURS*60 - worked);
+      }
+    });
+    var absent  = Math.max(0, workdaysToDate - present - leave);
+    var otH     = +(otMinTotal/60).toFixed(1);
+    var underH  = +(underMinTotal/60).toFixed(1);
 
     // 🆕 SALARY: only base + manual adjustments (NO simulated OT or deductions)
     var base = e.salary||0;
@@ -7344,7 +7490,7 @@ function renderMonthly() {
     totalPresent    += present;
 
     return {e:e, present:present, absent:absent, leave:leave, otH:otH, underH:underH,
-            lateN:lateN, base:base, otPay:otPay, totalDed:totalDed, net:net,
+            lateN:lateMinTotal, base:base, otPay:otPay, totalDed:totalDed, net:net,
             avgPct:avgPct, kpiColor:kpiColor, extraLeave:0,
             lastPayDate:lastPayDate, lastPayAmount:lastPayAmount, lastPayMethod:lastPayMethod, daysSince:daysSince};
   });
@@ -7386,7 +7532,7 @@ function renderMonthly() {
                   row.underH>0 ? '<span style="color:var(--re)">-'+row.underH+'h</span>' : '—';
     var deductDetail = [];
     if(row.underH>0) deductDetail.push('-'+fmtLAK(Math.round(row.totalDed*0.6)));
-    if(row.lateN>0)  deductDetail.push(row.lateN+'x late');
+    if(row.lateN>0)  deductDetail.push(row.lateN+' min late');
     if(row.extraLeave>0) deductDetail.push('+'+row.extraLeave+' leave');
     var statusBadge = row.net >= e.salary
       ? '<span class="badge bg-gr" style="font-size:10px"><span class=\"bi\"><span class=\"bi-en\">+Bonus</span><span class=\"bi-lo\">ໄດ້ເພີ່ມ</span></span></span>'
@@ -7410,7 +7556,7 @@ function renderMonthly() {
       '<td><div class="erow"><div class="eav" style="background:'+e.color+'">'+inits(e.name)+'</div>'+e.name+'</div></td>'+
       '<td><span class="badge bg-gy" style="font-size:10px">'+roleName(e.role)+'</span></td>'+
       (vis.leaveCount?'<td style="font-weight:600;color:var(--gr)">'+row.present+'</td><td style="color:'+(row.absent>2?'var(--re)':'inherit')+'">'+row.absent+'</td><td>'+row.leave+'</td>':'')+
-      (vis.lateCount?'<td style="color:'+(row.lateN>0?'var(--re)':'inherit')+';font-weight:'+(row.lateN>0?'600':'400')+'">'+(row.lateN>0?row.lateN+'x':'✓')+'</td>':'')+
+      (vis.lateCount?'<td style="color:'+(row.lateN>0?'var(--re)':'inherit')+';font-weight:'+(row.lateN>0?'600':'400')+'">'+(row.lateN>0?row.lateN+' min':'✓')+'</td>':'')+
       (vis.overtime?'<td>'+otLabel+'</td>':'')+
       (vis.salary?'<td style="font-size:12px">'+fmtLAK(row.base)+'</td>':'')+
       (vis.overtime?'<td style="color:var(--gr);font-weight:500;font-size:12px">'+(row.otPay>0?'+'+fmtLAK(row.otPay):'—')+'</td>':'')+
@@ -7457,19 +7603,155 @@ function saveVisibilitySettings() {
   toast('Visibility settings saved!');
 }
 
-function exportAttCSV() {
-  var month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][attMonth]+' '+attYear;
-  var hd = ['Employee','Role','Present','Absent','<span class=\"bi\"><span class=\"bi-en\">Leave</span><span class=\"bi-lo\">ລາພັກ</span></span>','Late','OT Hours','Base Salary','OT Pay','Deductions','Net Pay','KPI%'];
+// 🆕 v6.9: Open a small dialog to pick from/to dates before export
+function openExportDialog() {
+  // Default range = the currently selected month
+  var firstDay = new Date(attYear, attMonth, 1);
+  var lastDay  = new Date(attYear, attMonth+1, 0);
+  function fmt(d){
+    return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+  }
+  var defFrom = fmt(firstDay);
+  var defTo   = fmt(lastDay);
+
+  // Build modal
+  var existing = document.getElementById('exp-modal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = 'exp-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:14px;padding:22px;max-width:380px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.25)">'
+    + '<div style="font-size:16px;font-weight:700;color:var(--br);margin-bottom:4px">Export CSV / ສົ່ງອອກ CSV</div>'
+    + '<div style="font-size:12px;color:var(--g400);margin-bottom:14px">Pick the date range / ເລືອກໄລຍະວັນ</div>'
+    + '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">'
+    +   '<div><label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">From / ຈາກ</label>'
+    +     '<input type="date" id="exp-from" value="'+defFrom+'" class="fc" style="width:100%"></div>'
+    +   '<div><label style="font-size:12px;color:var(--g400);display:block;margin-bottom:4px">To / ຫາ</label>'
+    +     '<input type="date" id="exp-to" value="'+defTo+'" class="fc" style="width:100%"></div>'
+    + '</div>'
+    + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+    +   '<button class="btn btn-out" onclick="document.getElementById(\'exp-modal\').remove()">Cancel</button>'
+    +   '<button class="btn btn-pr" onclick="runExportCSV()">Download</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+}
+
+function runExportCSV() {
+  var fromEl = document.getElementById('exp-from');
+  var toEl   = document.getElementById('exp-to');
+  if (!fromEl || !toEl) return;
+  var from = fromEl.value, to = toEl.value;
+  if (!from || !to) { toast('Pick both dates'); return; }
+  if (from > to)    { toast('From date must be before To date'); return; }
+  document.getElementById('exp-modal').remove();
+  exportAttCSV(from, to);
+}
+
+function exportAttCSV(fromDate, toDate) {
+  // 🆕 v6.9: accept date range; fall back to current month when not provided
+  if (!fromDate || !toDate) {
+    var firstDay = new Date(attYear, attMonth, 1);
+    var lastDay  = new Date(attYear, attMonth+1, 0);
+    fromDate = firstDay.getFullYear()+'-'+('0'+(firstDay.getMonth()+1)).slice(-2)+'-'+('0'+firstDay.getDate()).slice(-2);
+    toDate   = lastDay.getFullYear() +'-'+('0'+(lastDay.getMonth()+1)).slice(-2) +'-'+('0'+lastDay.getDate()).slice(-2);
+  }
+  var rangeLabel = fromDate + ' to ' + toDate;
+  var hd = ['Employee','Role','Present','Absent','Leave','Late (min)','OT Hours','Total Hours','Base Salary','OT Pay','Deductions','Net Pay','KPI%'];
+
+  // Build per-emp/per-day map from real attendance log, filtered by date range
+  var perEmp = {};
+  if (Array.isArray(attendanceLog)) {
+    attendanceLog.forEach(function(r){
+      if (!r || !r.empId || !r.date) return;
+      var ymd = String(r.date).slice(0,10);
+      if (ymd < fromDate || ymd > toDate) return;
+      if (!perEmp[r.empId]) perEmp[r.empId] = {};
+      if (!perEmp[r.empId][ymd]) perEmp[r.empId][ymd] = { in:null, out:null };
+      var hhmm = '';
+      if (r.timestamp) {
+        var d = new Date(r.timestamp);
+        if (!isNaN(d.getTime())) {
+          var laoOffset = 7 * 60;
+          var localOffset = d.getTimezoneOffset();
+          var dLao = new Date(d.getTime() + (laoOffset + localOffset) * 60000);
+          hhmm = ('0'+dLao.getHours()).slice(-2)+':'+('0'+dLao.getMinutes()).slice(-2);
+        }
+      }
+      if (r.action === 'clockIn'  && !perEmp[r.empId][ymd].in)  perEmp[r.empId][ymd].in  = hhmm;
+      if (r.action === 'clockOut') perEmp[r.empId][ymd].out = hhmm;
+    });
+  }
+
+  // Approved leave days within range
+  var leaveDays = {};
+  if (Array.isArray(leaveRequests)) {
+    leaveRequests.forEach(function(lr){
+      if (!lr || lr.status !== 'approved') return;
+      var f = String(lr.fromDate||'').slice(0,10), t = String(lr.toDate||lr.fromDate||'').slice(0,10);
+      if (!f) return;
+      var d1 = new Date(f+'T00:00:00+07:00');
+      var d2 = new Date(t+'T00:00:00+07:00');
+      if (isNaN(d1.getTime())) return;
+      if (isNaN(d2.getTime())) d2 = d1;
+      for (var d = new Date(d1); d <= d2; d.setDate(d.getDate()+1)) {
+        var ymd = d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+        if (ymd >= fromDate && ymd <= toDate) {
+          leaveDays[lr.empId] = (leaveDays[lr.empId] || 0) + 1;
+        }
+      }
+    });
+  }
+
+  // Work-day count in the range (Mon–Sat)
+  var rangeWorkdays = 0;
+  var d1 = new Date(fromDate+'T00:00:00+07:00');
+  var d2 = new Date(toDate+'T00:00:00+07:00');
+  for (var dd = new Date(d1); dd <= d2; dd.setDate(dd.getDate()+1)) {
+    if (dd.getDay() !== 0) rangeWorkdays++;
+  }
+
+  var STD_HOURS = 8;
+  var STD_START_MIN = 8 * 60; // 08:00
+
   var rows = employees.map(function(e){
-    var seed=e.id.charCodeAt(e.id.length-1);
-    var p=15+(seed%8),a=2+(seed%3),l=0,ot=(seed%5*1.2).toFixed(1),late=seed%4;
-    var base=e.salary||0,otPay=Math.round(ot*(base/(26*10))*1.5),ded=Math.round(late*(base/(26*10))*0.5);
-    var hist=kpiData[e.id]||[],avg=hist.length?Math.round(hist.reduce(function(a,h){return a+h.pct;},0)/hist.length):0;
-    return [e.name,e.role,p,a,l,late,ot,base,otPay,ded,Math.max(0,base+otPay-ded),avg+'%'];
+    var byDate = perEmp[e.id] || {};
+    var present = 0, totalMin = 0, otMin = 0, lateMin = 0;
+    Object.keys(byDate).forEach(function(ymd){
+      var rec = byDate[ymd];
+      if (!rec.in) return;
+      present++;
+      var inParts = rec.in.split(':');
+      var inMinTime = parseInt(inParts[0],10)*60 + parseInt(inParts[1],10);
+      // Late as MINUTES (not count) — only positive
+      if (inMinTime > STD_START_MIN) lateMin += (inMinTime - STD_START_MIN);
+      if (rec.out) {
+        var outParts = rec.out.split(':');
+        var outMinTime = parseInt(outParts[0],10)*60 + parseInt(outParts[1],10);
+        if (outMinTime < inMinTime) outMinTime += 24*60;
+        var worked = outMinTime - inMinTime;
+        totalMin += worked;
+        if (worked > STD_HOURS*60) otMin += (worked - STD_HOURS*60);
+      }
+    });
+    var leave = leaveDays[e.id] || 0;
+    var absent = Math.max(0, rangeWorkdays - present - leave);
+    var totalH = (totalMin/60).toFixed(1);
+    var otH    = (otMin/60).toFixed(1);
+    var base = 0, otPay = 0, ded = 0, net = 0; // Level 2 will fill these
+    var hist = kpiData[e.id] || [];
+    var avg = hist.length ? Math.round(hist.reduce(function(a,h){return a+h.pct;},0)/hist.length) : 0;
+    return [e.name, roleName(e.role), present, absent, leave, lateMin, otH, totalH, base, otPay, ded, net, avg+'%'];
   });
-  var csv=[['Attendance Report — '+month],hd].concat(rows).map(function(r){return r.map(function(v){return '"'+v+'"';}).join(',');}).join('\n');
-  var a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);a.download='MiMi_Attendance_'+month.replace(' ','_')+'.csv';a.click();
-  toast('CSV exported!');
+
+  var csv = [['Attendance Report — '+rangeLabel], hd].concat(rows)
+    .map(function(r){ return r.map(function(v){ return '"'+String(v).replace(/"/g,'""')+'"'; }).join(','); })
+    .join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download = 'MiMi_Attendance_'+fromDate+'_to_'+toDate+'.csv';
+  a.click();
+  toast('CSV exported');
 }
 
 // ===================== SCHEDULE =====================
@@ -8986,6 +9268,112 @@ function pushShiftTypes() {
   }, null, true);
 }
 
+// 🆕 v7.0: Payroll settings (persisted in Sheet "PayrollSettings")
+//          Defaults match what Round 1 already used internally.
+var PAYROLL = {
+  otRate:       1.0,   // OT pay multiplier (1x = flat, 1.5x = time-and-half)
+  daysPerMonth: 26,    // workdays per month (used for hourly rate)
+  hoursPerDay:  8,     // standard hours per day
+  otBufferMin:  30,    // minutes after standard end before OT starts counting
+  workdayStart: '08:00',
+  workdayEnd:   '16:00'
+};
+
+function fetchPayrollSettings(cb) {
+  if (!SHEET_URL) { if (cb) cb(); return; }
+  apiPost({ action: 'getPayrollSettings' }, function(d){
+    if (d && d.ok && d.settings) {
+      var s = d.settings;
+      if (s.otRate       != null) PAYROLL.otRate       = parseFloat(s.otRate)       || PAYROLL.otRate;
+      if (s.daysPerMonth != null) PAYROLL.daysPerMonth = parseInt(s.daysPerMonth,10) || PAYROLL.daysPerMonth;
+      if (s.hoursPerDay  != null) PAYROLL.hoursPerDay  = parseFloat(s.hoursPerDay)  || PAYROLL.hoursPerDay;
+      if (s.otBufferMin  != null) PAYROLL.otBufferMin  = parseInt(s.otBufferMin,10) || PAYROLL.otBufferMin;
+      if (s.workdayStart) PAYROLL.workdayStart = s.workdayStart;
+      if (s.workdayEnd)   PAYROLL.workdayEnd   = s.workdayEnd;
+    }
+    if (cb) cb();
+  }, true);
+}
+
+function savePayrollSettings() {
+  var rate = parseFloat(document.getElementById('ps-ot-rate').value);
+  var days = parseInt(document.getElementById('ps-days').value, 10);
+  var hrs  = parseFloat(document.getElementById('ps-hours').value);
+  var buf  = parseInt(document.getElementById('ps-ot-buffer').value, 10);
+  if (isNaN(rate) || rate < 0)             { toast('OT rate must be ≥ 0'); return; }
+  if (isNaN(days) || days < 1 || days > 31){ toast('Days/month must be 1–31'); return; }
+  if (isNaN(hrs)  || hrs  < 1 || hrs > 24) { toast('Hours/day must be 1–24'); return; }
+  if (isNaN(buf)  || buf  < 0)             { toast('OT buffer must be ≥ 0'); return; }
+  PAYROLL.otRate       = rate;
+  PAYROLL.daysPerMonth = days;
+  PAYROLL.hoursPerDay  = hrs;
+  PAYROLL.otBufferMin  = buf;
+  if (!SHEET_URL) { toast('Saved locally'); return; }
+  apiPost({
+    action: 'savePayrollSettings',
+    settings: JSON.stringify(PAYROLL),
+    user: (currentUser && currentUser.name) || 'Owner'
+  }, function(d){
+    if (d && d.ok) {
+      toast('Payroll settings saved ✓');
+      logEvent('edit', 'Payroll settings updated',
+        'OT rate: '+rate+'x, Days: '+days+', Hours: '+hrs+', Buffer: '+buf+' min');
+    } else {
+      toast('Save failed — try again');
+    }
+  }, true);
+}
+
+// 🆕 v7.0: Work schedule (persisted in Sheet "WorkSchedule")
+//          Same schedule applied to everyone (per Kiko's choice).
+var WORK_SCHEDULE = {
+  weekday: { startTime: '08:00', endTime: '16:00' }, // Mon-Fri
+  weekend: { startTime: '08:00', endTime: '17:00' }  // Sat-Sun
+};
+
+function fetchWorkSchedule(cb) {
+  if (!SHEET_URL) { if (cb) cb(); return; }
+  apiPost({ action: 'getWorkSchedule' }, function(d){
+    if (d && d.ok && Array.isArray(d.schedule)) {
+      d.schedule.forEach(function(s){
+        if (s.dayGroup === 'weekday') WORK_SCHEDULE.weekday = { startTime: s.startTime, endTime: s.endTime };
+        if (s.dayGroup === 'weekend') WORK_SCHEDULE.weekend = { startTime: s.startTime, endTime: s.endTime };
+      });
+    }
+    if (cb) cb();
+  }, true);
+}
+
+function saveWorkSchedule() {
+  var wdS = document.getElementById('ws-wd-start').value;
+  var wdE = document.getElementById('ws-wd-end').value;
+  var weS = document.getElementById('ws-we-start').value;
+  var weE = document.getElementById('ws-we-end').value;
+  if (!wdS || !wdE || !weS || !weE) { toast('All fields required'); return; }
+  if (wdS >= wdE) { toast('Mon–Fri start must be before end'); return; }
+  if (weS >= weE) { toast('Sat–Sun start must be before end'); return; }
+  WORK_SCHEDULE.weekday = { startTime: wdS, endTime: wdE };
+  WORK_SCHEDULE.weekend = { startTime: weS, endTime: weE };
+  var arr = [
+    { dayGroup: 'weekday', startTime: wdS, endTime: wdE },
+    { dayGroup: 'weekend', startTime: weS, endTime: weE }
+  ];
+  if (!SHEET_URL) { toast('Saved locally'); return; }
+  apiPost({
+    action: 'saveWorkSchedule',
+    schedule: JSON.stringify(arr),
+    user: (currentUser && currentUser.name) || 'Owner'
+  }, function(d){
+    if (d && d.ok) {
+      toast('Work schedule saved ✓');
+      logEvent('edit', 'Work schedule updated',
+        'Mon-Fri: '+wdS+'-'+wdE+', Sat-Sun: '+weS+'-'+weE);
+    } else {
+      toast('Save failed — try again');
+    }
+  }, true);
+}
+
 function getWeekKey(offset) {
   var d = new Date();
   d.setDate(d.getDate() + offset * 7);
@@ -9384,7 +9772,12 @@ function exportActivityCSV() {
   var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv); a.download='MiMi_ActivityLog.csv'; a.click();
   toast('Activity log exported!');
 }
-function clearLog() { if(!confirm('Clear all log entries?')) return; activityLog=[]; renderLog(); toast('Log cleared.'); }
+function clearLog() {
+  // 🆕 v7.0: Server keeps the full history. Clearing here only hides
+  //          the local view. Owners can always view past activity from Sheet "ActivityLog".
+  if(!confirm('Clear local view? History stays saved in Google Sheet — you can re-load any time with Refresh.')) return;
+  activityLog=[]; renderLog(); toast('Local view cleared. Server history is preserved.');
+}
 
 // Close modal on overlay click
 document.getElementById('emp-modal').addEventListener('click', function(e){ if(e.target===document.getElementById('emp-modal')) closeModal(); });
@@ -9464,7 +9857,7 @@ function buildSummaryHTML(e) {
       '</div>' +
       '<div class="summary-section">' +
         '<div class="summary-section-title">Employment Details</div>' +
-        summaryRow('Role / Position', e.role) +
+        summaryRow('Role / Position', roleName(e.role)) +
         summaryRow('Access Level', e.access||'Employee') +
         summaryRow('Contract Start', e.contractStart) +
         summaryRow('Contract End', e.contractEnd) +
@@ -9747,6 +10140,52 @@ function renderSettings() {
       + '</div>';
   });
   html += '</div></div>';
+
+  // 🆕 v7.0 ── PAYROLL SETTINGS (OT rate, hourly divisor) ──
+  if (isOwner2) {
+    html += '<div style="background:#fff;border-radius:12px;border:1px solid var(--g100);padding:18px;margin-bottom:14px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+    html += '<div><div style="font-size:14px;font-weight:700;color:var(--br)">💰 Payroll Settings / ການຄຳນວນເງິນເດືອນ</div>';
+    html += '<div style="font-size:11px;color:var(--g400)">Used by salary, OT, late, deductions logic</div></div></div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">';
+    html += '<div style="background:var(--g50);border-radius:8px;padding:10px"><div style="font-size:11px;color:var(--g400);margin-bottom:4px">OT rate / ອັດຕາ OT</div>'
+         + '<input class="fc" id="ps-ot-rate" type="number" step="0.1" min="0" value="'+(typeof PAYROLL!=="undefined"?PAYROLL.otRate:1.0)+'" style="width:100%;font-size:13px"></div>';
+    html += '<div style="background:var(--g50);border-radius:8px;padding:10px"><div style="font-size:11px;color:var(--g400);margin-bottom:4px">Days/month / ມື້ຕໍ່ເດືອນ</div>'
+         + '<input class="fc" id="ps-days" type="number" min="1" max="31" value="'+(typeof PAYROLL!=="undefined"?PAYROLL.daysPerMonth:26)+'" style="width:100%;font-size:13px"></div>';
+    html += '<div style="background:var(--g50);border-radius:8px;padding:10px"><div style="font-size:11px;color:var(--g400);margin-bottom:4px">Hours/day / ຊົ່ວໂມງຕໍ່ມື້</div>'
+         + '<input class="fc" id="ps-hours" type="number" step="0.5" min="1" max="24" value="'+(typeof PAYROLL!=="undefined"?PAYROLL.hoursPerDay:8)+'" style="width:100%;font-size:13px"></div>';
+    html += '<div style="background:var(--g50);border-radius:8px;padding:10px"><div style="font-size:11px;color:var(--g400);margin-bottom:4px">OT buffer (min) / ບຫບເຟີ OT</div>'
+         + '<input class="fc" id="ps-ot-buffer" type="number" min="0" max="120" value="'+(typeof PAYROLL!=="undefined"?PAYROLL.otBufferMin:30)+'" style="width:100%;font-size:13px"></div>';
+    html += '</div>';
+    html += '<div style="margin-top:12px;display:flex;gap:8px"><button class="btn btn-pr" onclick="savePayrollSettings()" style="font-size:12px">💾 Save</button>'
+         + '<div style="font-size:11px;color:var(--g400);align-self:center">Hourly = monthly_salary ÷ days/month ÷ hours/day</div></div>';
+    html += '</div>';
+  }
+
+  // 🆕 v7.0 ── WORK SCHEDULE (Mon-Fri / Sat-Sun) ──
+  if (isOwner2) {
+    html += '<div style="background:#fff;border-radius:12px;border:1px solid var(--g100);padding:18px;margin-bottom:14px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+    html += '<div><div style="font-size:14px;font-weight:700;color:var(--br)">📅 Work Schedule / ຕາຕະລາງເຮັດວຽກ</div>';
+    html += '<div style="font-size:11px;color:var(--g400)">Same schedule for everyone — used to compute hours, late, OT</div></div></div>';
+    var sched = (typeof WORK_SCHEDULE !== 'undefined' ? WORK_SCHEDULE : { weekday:{startTime:'08:00',endTime:'16:00'}, weekend:{startTime:'08:00',endTime:'17:00'} });
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    html += '<div style="background:var(--g50);border-radius:8px;padding:10px"><div style="font-size:11px;color:var(--g400);margin-bottom:6px">Mon–Fri / ຈັນ–ສຸກ</div>'
+         + '<div style="display:flex;gap:6px;align-items:center">'
+         + '<input class="fc" id="ws-wd-start" type="time" value="'+(sched.weekday?sched.weekday.startTime:'08:00')+'" style="font-size:12px">'
+         + '<span style="color:var(--g400)">→</span>'
+         + '<input class="fc" id="ws-wd-end" type="time" value="'+(sched.weekday?sched.weekday.endTime:'16:00')+'" style="font-size:12px">'
+         + '</div></div>';
+    html += '<div style="background:var(--g50);border-radius:8px;padding:10px"><div style="font-size:11px;color:var(--g400);margin-bottom:6px">Sat–Sun / ເສົາ–ອາທິດ</div>'
+         + '<div style="display:flex;gap:6px;align-items:center">'
+         + '<input class="fc" id="ws-we-start" type="time" value="'+(sched.weekend?sched.weekend.startTime:'08:00')+'" style="font-size:12px">'
+         + '<span style="color:var(--g400)">→</span>'
+         + '<input class="fc" id="ws-we-end" type="time" value="'+(sched.weekend?sched.weekend.endTime:'17:00')+'" style="font-size:12px">'
+         + '</div></div>';
+    html += '</div>';
+    html += '<div style="margin-top:12px"><button class="btn btn-pr" onclick="saveWorkSchedule()" style="font-size:12px">💾 Save</button></div>';
+    html += '</div>';
+  }
 
   // ── CHECKLIST LINK ──
   html += '<div style="background:#fff;border-radius:12px;border:1px solid var(--g100);padding:18px;margin-bottom:14px">';
