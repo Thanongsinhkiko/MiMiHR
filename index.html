@@ -430,6 +430,8 @@ input[type=file]{display:none;}
       <!-- live sync dot -->
       <div id="sync-dot" title="Live sync" style="width:8px;height:8px;border-radius:50%;background:var(--gr);opacity:0.3;margin-left:auto;flex-shrink:0;transition:opacity .5s"></div>
     </div>
+    <!-- 🆕 v7.7.9: Manual refresh — pulls fresh Rules, Tasks, Schedule, etc from Sheet -->
+    <div class="logout" id="sb-refresh-btn" onclick="manualRefreshAll()" style="background:rgba(232,130,26,.15);color:#FFD9A8;border:1px solid rgba(232,130,26,.4);margin-bottom:6px"><span class="bi"><span class="bi-en">🔄 Refresh All</span><span class="bi-lo">🔄 ໂຫລດໃໝ່ທັງໝົດ</span></span></div>
     <div class="logout" onclick="doLogout()"><span class="bi"><span class="bi-en">Sign Out</span><span class="bi-lo">ອອກຈາກລະບົບ</span></span></div>
     <!-- language toggle -->
     <div style="display:flex;gap:6px;margin:7px 0 3px">
@@ -479,7 +481,7 @@ input[type=file]{display:none;}
     </div>
     <div id="sec-att" class="dash-section-body">
       <div style="overflow-x:auto">
-        <table class="htable"><thead><tr><th><span class="bi"><span class="bi-en">Employee</span><span class="bi-lo">ພະນັກງານ</span></span></th><th><span class="bi"><span class="bi-en">Role</span><span class="bi-lo">ໜ້າທີ່</span></span></th><th><span class="bi"><span class="bi-en">Clock In</span><span class="bi-lo">ເຂົ້າວຽກ</span></span></th><th><span class="bi"><span class="bi-en">Status</span><span class="bi-lo">ສະຖານະ</span></span></th></tr></thead><tbody id="dash-att"></tbody></table>
+        <table class="htable"><thead><tr><th><span class="bi"><span class="bi-en">Employee</span><span class="bi-lo">ພະນັກງານ</span></span></th><th><span class="bi"><span class="bi-en">Role</span><span class="bi-lo">ໜ້າທີ່</span></span></th><th><span class="bi"><span class="bi-en">Clock In</span><span class="bi-lo">ເຂົ້າວຽກ</span></span></th><th><span class="bi"><span class="bi-en">Clock Out</span><span class="bi-lo">ອອກວຽກ</span></span></th><th><span class="bi"><span class="bi-en">Status</span><span class="bi-lo">ສະຖານະ</span></span></th></tr></thead><tbody id="dash-att"></tbody></table>
       </div>
     </div>
   </div>
@@ -1784,6 +1786,96 @@ function doLogout() {
   document.getElementById('app').style.display = 'none';
 }
 
+// 🆕 v7.7.9: Manual full refresh — pulls all data the auto-poll cycles
+//            don't cover (Rules, Tasks, Schedule plan, Shift Types, etc).
+//            Use when Owner edits Sheet directly and wants the change visible
+//            on this device without logging out.
+function manualRefreshAll() {
+  if (!currentUser) {
+    toast('Please log in first');
+    return;
+  }
+  // Visual feedback on the button — disable + show spinner-ish state
+  var btn = document.getElementById('sb-refresh-btn');
+  if (btn) {
+    btn.style.opacity = '0.5';
+    btn.style.pointerEvents = 'none';
+    btn.innerHTML = '<span class="bi"><span class="bi-en">⏳ Refreshing...</span><span class="bi-lo">⏳ ກຳລັງໂຫລດ...</span></span>';
+  }
+  toast('🔄 Refreshing all data from Sheet...');
+
+  // Track when all fetches complete so we can re-render & re-enable
+  var pending = 0;
+  function done() {
+    pending--;
+    if (pending <= 0) {
+      // Re-hydrate status from event log (clock-in/out timestamps)
+      if (typeof hydrateEmployeesFromLog === 'function') hydrateEmployeesFromLog();
+      // Reset week-cache so SchedulePlan refetches fresh
+      window._fetchedScheduleWeeks = {};
+      // Re-render whatever view is currently active
+      var active = document.querySelector('.view.active');
+      if (active) {
+        var id = active.id.replace('view-','');
+        if (id === 'dashboard')   { renderDashboard(); renderEmployees(employees); updateLeaveBadge(); }
+        else if (id === 'employees')  renderEmployees(employees);
+        else if (id === 'attendance') { renderMonthly && renderMonthly(); }
+        else if (id === 'leave')      renderLeaveView && renderLeaveView();
+        else if (id === 'schedule')   renderScheduleView && renderScheduleView();
+        else if (id === 'clockin')    renderClockIn && renderClockIn();
+        else if (id === 'kpi')        renderKPI && renderKPI();
+        else if (id === 'tasks')      renderTasksHub && renderTasksHub();
+        else if (id === 'settings')   renderSettings && renderSettings();
+        else if (id === 'rhub')       (typeof renderRoleHub === 'function') && renderRoleHub();
+      }
+      // Re-enable button
+      if (btn) {
+        btn.style.opacity = '';
+        btn.style.pointerEvents = '';
+        btn.innerHTML = '<span class="bi"><span class="bi-en">🔄 Refresh All</span><span class="bi-lo">🔄 ໂຫລດໃໝ່ທັງໝົດ</span></span>';
+      }
+      toast('✅ All data refreshed');
+    }
+  }
+
+  // Schedule all the fetches we know about. Each is best-effort —
+  // missing functions just decrement pending without erroring.
+  var fetchers = [
+    'pullAllFromSheets',       // employees, attendance, leave
+    'fetchShiftTypes',         // ShiftTypes sheet
+    'fetchPayrollSettings',    // PayrollSettings sheet
+    'fetchWorkSchedule',       // WorkSchedule sheet
+    'fetchRules',              // RestaurantRules sheet
+    'fetchInstructionPhotos',  // InstructionPhotos sheet
+    'fetchPayments',           // Payments sheet
+    'fetchChecklistTasks',     // ChecklistTasks sheet
+    'fetchAttendanceLog',      // Attendance sheet (event log)
+    'fetchLeaveTypes'          // LeaveTypes if separate
+  ];
+
+  fetchers.forEach(function(name){
+    var fn = window[name];
+    if (typeof fn === 'function') {
+      pending++;
+      try { fn(done); } catch(e) { done(); }
+    }
+  });
+
+  // Always re-fetch SchedulePlan for current week if Schedule view is active
+  var weekKey = (typeof getWeekKey === 'function')
+    ? getWeekKey(typeof scheduleWeekOffset !== 'undefined' ? scheduleWeekOffset : 0)
+    : null;
+  if (weekKey && typeof fetchSchedulePlan === 'function') {
+    pending++;
+    try { fetchSchedulePlan(weekKey, done); } catch(e) { done(); }
+  }
+
+  // Safety: if no fetchers fired, still re-render & re-enable
+  if (pending === 0) {
+    pending = 1; done();
+  }
+}
+
 function setFirstPassword() {
   var user  = (document.getElementById('sp-user')||{}).value||'';
   var pass1 = (document.getElementById('sp-pass1')||{}).value||'';
@@ -2369,7 +2461,7 @@ function renderDashboard() {
            : e.status==='completed' ? 'bg-bl'
            : e.status==='leave'     ? 'bg-or'
            : 'bg-re';
-    return '<tr><td><div class="erow"><div class="eav" style="background:'+escHtml(e.color||'#999')+'">'+escHtml(inits(e.name))+'</div>'+escHtml(e.name)+'</div></td><td><span class="badge bg-gray">'+escHtml(roleName(e.role))+'</span></td><td style="font-family:monospace">'+escHtml(e.clockIn||'--')+'</td><td><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></td></tr>';
+    return '<tr><td><div class="erow"><div class="eav" style="background:'+escHtml(e.color||'#999')+'">'+escHtml(inits(e.name))+'</div>'+escHtml(e.name)+'</div></td><td><span class="badge bg-gray">'+escHtml(roleName(e.role))+'</span></td><td style="font-family:monospace">'+escHtml(e.clockIn||'--')+'</td><td style="font-family:monospace;color:'+(e.clockOut?'var(--br)':'var(--g400)')+'">'+escHtml(e.clockOut||'--')+'</td><td><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></td></tr>';
   }).join('');
 
   var pending2 = leaveRequests.filter(function(r){ return r.status==='pending'; });
@@ -2393,7 +2485,15 @@ function renderDashboard() {
 // ===================== EMPLOYEES =====================
 function renderEmployees(list) {
   document.getElementById('emp-grid').innerHTML = list.map(function(e){
-    var days = Math.max(0,Math.floor((new Date(e.contractEnd)-new Date())/86400000));
+    // 🔧 v7.7.5 FIX: NaNd bug — validate contractEnd before subtraction.
+    //                If contractEnd is missing or invalid, show "—" instead of "NaNd".
+    var days = null;
+    if (e.contractEnd) {
+      var endD = new Date(e.contractEnd);
+      if (!isNaN(endD.getTime())) {
+        days = Math.max(0, Math.floor((endD - new Date()) / 86400000));
+      }
+    }
     // 🆕 FIX v5: support 'completed' status (clocked in AND out)
     var sc = e.status==='present'   ? 'present'
            : e.status==='completed' ? 'completed'
@@ -2406,7 +2506,7 @@ function renderEmployees(list) {
     var photoHtml = e.photo
       ? '<div class="ecard-photo" style="background-image:url('+e.photo+');background-size:cover;background-position:center;"></div>'
       : '<div class="ecard-photo" style="background:'+e.color+'">'+inits(e.name)+'</div>';
-    return '<div class="ecard" onclick="openEmployee(\''+escJs(e.id)+'\')"><div class="ecard-top"><div class="ecard-dot '+sc+'"></div>'+photoHtml+'<div class="ecard-name">'+escHtml(e.name)+'</div><div class="ecard-role">'+escHtml(roleName(e.role))+'</div></div><div class="ecard-body"><div class="emeta"><div class="emeta-item"><div class="emeta-label">Age</div><div class="emeta-val">'+escHtml(String(e.age||''))+'</div></div><div class="emeta-item"><div class="emeta-label">From</div><div class="emeta-val" style="font-size:11px">'+escHtml(e.origin||'')+'</div></div><div class="emeta-item"><div class="emeta-label">Contract</div><div class="emeta-val" style="font-size:11px;color:'+(days<60?'var(--re)':'inherit')+'">'+days+'d</div></div></div><div style="background:var(--g50);border-radius:6px;padding:7px 11px"><span style="font-size:11px;color:var(--g400)">Salary: </span><span style="font-size:12px;font-weight:600;color:var(--br)">'+(e.salary/1000000).toFixed(1)+'M LAK</span></div></div><div class="ecard-foot"><span style="font-size:11px;color:var(--g400);font-family:monospace">#'+escHtml(e.id)+'</span><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div></div>';
+    return '<div class="ecard" onclick="openEmployee(\''+escJs(e.id)+'\')"><div class="ecard-top"><div class="ecard-dot '+sc+'"></div>'+photoHtml+'<div class="ecard-name">'+escHtml(e.name)+'</div><div class="ecard-role">'+escHtml(roleName(e.role))+'</div></div><div class="ecard-body"><div class="emeta"><div class="emeta-item"><div class="emeta-label">Age</div><div class="emeta-val">'+escHtml(String(e.age||''))+'</div></div><div class="emeta-item"><div class="emeta-label">From</div><div class="emeta-val" style="font-size:11px">'+escHtml(e.origin||'')+'</div></div><div class="emeta-item"><div class="emeta-label">Contract</div><div class="emeta-val" style="font-size:11px;color:'+(days!==null && days<60?'var(--re)':'inherit')+'">'+(days===null?'—':days+'d')+'</div></div></div><div style="background:var(--g50);border-radius:6px;padding:7px 11px"><span style="font-size:11px;color:var(--g400)">Salary: </span><span style="font-size:12px;font-weight:600;color:var(--br)">'+((Number(e.salary)||0)/1000000).toFixed(1)+'M LAK</span></div></div><div class="ecard-foot"><span style="font-size:11px;color:var(--g400);font-family:monospace">#'+escHtml(e.id)+'</span><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div></div>';
   }).join('');
 }
 
@@ -5497,7 +5597,158 @@ function recruitReset(){
 function renderClockIn() {
   // 🆕 Treat checker like employee — they have their own personal clock-in, not the manager staff table
   var isEmp = currentUser.role==='employee' || currentUser.role==='checker';
+
+  // 🔧 v7.7.4 FIX: Sync clockedIn flag from server-side employee record
+  //                so a user opening the app fresh sees the correct button
+  //                state, not always "Clock In".
+  // For employees/checkers, derive from their own employee record.
+  if (isEmp && currentUser.empId) {
+    var myEmp = employees.find(function(e){ return e.id === currentUser.empId; });
+    if (myEmp) {
+      // Only "currently clocked in" if there's a clockIn but no clockOut today
+      clockedIn = !!(myEmp.clockIn && !myEmp.clockOut);
+    }
+  }
+
   var staffTable = '';
+  // 🔧 v7.7.4 FIX: Build button label/class from current clockedIn state,
+  //                not hardcoded to "Clock In".
+  // 🆕 v7.7.6: Two-button design — separate Clock In and Clock Out so phones
+  //            with delayed UI can't trigger the wrong action via repeated taps.
+  //            Clock Out is disabled until the scheduled shift end time.
+
+  // Determine state for this user
+  var myEmpForBtn = (isEmp && currentUser.empId)
+    ? employees.find(function(e){ return e.id === currentUser.empId; })
+    : null;
+  var hasIn  = !!(myEmpForBtn && myEmpForBtn.clockIn);
+  var hasOut = !!(myEmpForBtn && myEmpForBtn.clockOut);
+
+  // Compute schedule end for today (Lao time)
+  var nowLao = (function(){
+    var n = new Date();
+    var laoOff = 7*60, locOff = n.getTimezoneOffset();
+    return new Date(n.getTime() + (laoOff + locOff)*60000);
+  })();
+  var dow = nowLao.getDay(); // 0=Sun, 6=Sat
+  var isWeekend = (dow === 0 || dow === 6);
+  var WS = (typeof WORK_SCHEDULE !== 'undefined') ? WORK_SCHEDULE : { weekday:{endTime:'16:00'}, weekend:{endTime:'17:00'} };
+  var endTimeStr = isWeekend ? (WS.weekend && WS.weekend.endTime || '17:00')
+                              : (WS.weekday && WS.weekday.endTime || '16:00');
+  var endParts = endTimeStr.split(':');
+  var endMin = (parseInt(endParts[0],10)||16)*60 + (parseInt(endParts[1],10)||0);
+  var nowMin = nowLao.getHours()*60 + nowLao.getMinutes();
+  var canClockOut = hasIn && !hasOut && nowMin >= endMin;
+  var minutesUntilOut = endMin - nowMin;
+
+  // Format end-time for display (e.g. "4:00 PM")
+  var endH = parseInt(endParts[0],10)||16;
+  var endM = ('0'+(parseInt(endParts[1],10)||0)).slice(-2);
+  var endAP = endH >= 12 ? 'PM' : 'AM';
+  var endHDisp = endH % 12; if (endHDisp === 0) endHDisp = 12;
+  var endTimeDisp = endHDisp + ':' + endM + ' ' + endAP;
+
+  // Build the two-button HTML
+  var twoButtonHtml = '';
+  if (!hasIn) {
+    // STATE 1: Not clocked in yet — show big Clock In button only
+    twoButtonHtml =
+      '<button class="clock-bigbtn cbtn-in" id="cbtn" onclick="doClock(\'gps\')">'+
+        '<span class="bi"><span class="bi-en">Clock In</span><span class="bi-lo">ເຂົ້າວຽກ</span></span>'+
+      '</button>';
+  } else if (hasIn && !hasOut) {
+    // STATE 2: Clocked in — show big confirmation + small Clock Out button
+    var inDisp = (function(){
+      // Format "08:29" → "8:29 AM"
+      if (typeof myEmpForBtn.clockIn !== 'string') return myEmpForBtn.clockIn;
+      var parts = myEmpForBtn.clockIn.split(':');
+      var h = parseInt(parts[0],10), m = ('0'+(parseInt(parts[1],10)||0)).slice(-2);
+      var ap = h >= 12 ? 'PM' : 'AM';
+      h = h % 12; if (h === 0) h = 12;
+      return h + ':' + m + ' ' + ap;
+    })();
+    twoButtonHtml =
+      // Big "✓ Clocked in" confirmation (looks like a button but disabled)
+      '<button class="clock-bigbtn" id="cbtn-confirm" disabled style="background:var(--gr);color:#fff;opacity:.85;cursor:default;border:0">'+
+        '<span style="font-size:18px">✓ </span>'+
+        '<span class="bi"><span class="bi-en">Clocked in at '+inDisp+'</span><span class="bi-lo">ເຂົ້າວຽກ '+inDisp+'</span></span>'+
+      '</button>'+
+      // Small Clock Out button — disabled until schedule end
+      '<div style="margin-top:14px">'+
+        (canClockOut
+          ? '<button class="btn btn-out" id="cbtn-out" onclick="doClockOut()" style="width:100%;padding:12px;font-size:14px;background:var(--re);color:#fff;border:0">'+
+              '<span class="bi"><span class="bi-en">Clock Out</span><span class="bi-lo">ອອກວຽກ</span></span>'+
+            '</button>'
+          : '<button class="btn btn-out" id="cbtn-out" data-locked="schedule" disabled style="width:100%;padding:12px;font-size:13px;background:var(--g100);color:var(--g400);border:1px solid var(--g200);cursor:not-allowed">'+
+              '<span class="bi">'+
+                '<span class="bi-en">🔒 Clock Out unlocks at '+endTimeDisp+'</span>'+
+                '<span class="bi-lo">🔒 ອອກວຽກໄດ້ເວລາ '+endTimeDisp+'</span>'+
+              '</span>'+
+              (minutesUntilOut > 0 && minutesUntilOut < 480
+                ? '<div style="font-size:11px;color:var(--g400);margin-top:4px">'+
+                    '<span class="bi"><span class="bi-en">'+minutesUntilOut+' min remaining</span><span class="bi-lo">ຍັງເຫຼືອ '+minutesUntilOut+' ນາທີ</span></span>'+
+                  '</div>'
+                : '')+
+            '</button>')+
+      '</div>';
+  } else {
+    // STATE 3: Both in + out — day completed
+    twoButtonHtml =
+      '<button class="clock-bigbtn" disabled style="background:var(--bl);color:#fff;opacity:.85;cursor:default;border:0">'+
+        '<span style="font-size:18px">✓ </span>'+
+        '<span class="bi"><span class="bi-en">Day Completed</span><span class="bi-lo">ສຳເລັດແລ້ວ</span></span>'+
+      '</button>';
+  }
+
+  // Sync clockedIn flag for downstream code
+  clockedIn = hasIn && !hasOut;
+
+  var staffTable = '';
+
+  // 🔧 v7.7.4 FIX: Build Today's Log from attendanceLog (Sheet) so a fresh
+  //                browser session still shows today's events instead of
+  //                "No entries yet today" while the server actually has them.
+  var todayKey = (function(){
+    var n = new Date();
+    var laoOff = 7*60, locOff = n.getTimezoneOffset();
+    var d = new Date(n.getTime() + (laoOff + locOff)*60000);
+    return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+  })();
+  var myTodayEvents = [];
+  if (isEmp && currentUser.empId && Array.isArray(attendanceLog)) {
+    myTodayEvents = attendanceLog.filter(function(r){
+      if (r.empId !== currentUser.empId) return false;
+      var d = r.timestamp ? new Date(r.timestamp) : (r.date ? new Date(r.date) : null);
+      if (!d) return false;
+      var laoOff = 7*60, locOff = d.getTimezoneOffset();
+      var dL = new Date(d.getTime() + (laoOff + locOff)*60000);
+      var key = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+      return key === todayKey;
+    }).sort(function(a,b){
+      return new Date(a.timestamp||a.date||0) - new Date(b.timestamp||b.date||0);
+    });
+  }
+  var todayLogHtml = '';
+  if (myTodayEvents.length) {
+    todayLogHtml = myTodayEvents.map(function(r){
+      var d = r.timestamp ? new Date(r.timestamp) : new Date(r.date);
+      var laoOff = 7*60, locOff = d.getTimezoneOffset();
+      var dL = new Date(d.getTime() + (laoOff + locOff)*60000);
+      var h = dL.getHours(), m = ('0'+dL.getMinutes()).slice(-2);
+      var ap = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12;
+      var label = r.action === 'clockIn'
+        ? '<span class="badge bg-gr" style="font-size:10px">in / ເຂົ້າ</span>'
+        : '<span class="badge bg-bl" style="font-size:10px">out / ອອກ</span>';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--g100)">'+
+        '<span style="font-weight:500">'+label+'</span>'+
+        '<span class="badge bg-gy" style="font-size:10px">'+(r.method||'—')+'</span>'+
+        '<span style="font-family:monospace;color:var(--or);font-weight:600">'+h+':'+m+' '+ap+'</span>'+
+        '</div>';
+    }).join('');
+  } else {
+    todayLogHtml = 'No entries yet today.';
+  }
+
   if (!isEmp) {
     // 🆕 Build a friendly staff-status row using Lao time and "completed" status when clocked out
     var todayDate = (typeof fmtLaoDate === 'function') ? fmtLaoDate(new Date()) : new Date().toDateString();
@@ -5520,12 +5771,27 @@ function renderClockIn() {
     }).join('');
     staffTable = '<div class="card" style="margin-top:16px"><div class="card-hd"><span class="card-title"><span class="bi"><span class="bi-en">Staff Status \u2014 '+todayDate+'</span><span class="bi-lo">ສະຖານະພະນັກງານ \u2014 '+todayDate+'</span></span></span></div><div class="card-bd" style="padding:0"><table class="htable"><thead><tr><th><span class="bi"><span class="bi-en">Employee</span><span class="bi-lo">ພະນັກງານ</span></span></th><th><span class="bi"><span class="bi-en">Clock In</span><span class="bi-lo">ເຂົ້າວຽກ</span></span></th><th><span class="bi"><span class="bi-en">Clock Out</span><span class="bi-lo">ອອກວຽກ</span></span></th><th><span class="bi"><span class="bi-en">Status</span><span class="bi-lo">ສະຖານະ</span></span></th></tr></thead><tbody>'+statusRows+'</tbody></table></div></div>';
   }
-  document.getElementById('clockin-content').innerHTML = '<div style="max-width:520px;margin:0 auto"><div class="clock-hero"><div class="clock-time" id="ct">--:--:--</div><div class="clock-date" id="cd"></div><div class="cmethod-pane active" id="cmp-gps" style="text-align:center;margin-top:20px"><div class="loc-status"><div class="loc-dot" id="loc-dot"></div><span id="loc-text">Checking location...</span></div><br><button class="clock-bigbtn cbtn-in" id="cbtn" onclick="doClock(\'gps\')">Clock In</button></div></div><div class="card"><div class="card-hd"><span class="card-title">Today\'s Log</span></div><div class="card-bd"><div id="clock-log" style="font-size:13px;color:var(--g400)">No entries yet today.</div></div></div>'+staffTable+'</div>';
+  document.getElementById('clockin-content').innerHTML = '<div style="max-width:520px;margin:0 auto"><div class="clock-hero"><div class="clock-time" id="ct">--:--:--</div><div class="clock-date" id="cd"></div><div class="cmethod-pane active" id="cmp-gps" style="text-align:center;margin-top:20px"><div class="loc-status"><div class="loc-dot" id="loc-dot"></div><span id="loc-text">Checking location...</span></div><br>'+twoButtonHtml+'</div></div><div class="card"><div class="card-hd"><span class="card-title">Today\'s Log</span></div><div class="card-bd"><div id="clock-log" style="font-size:13px;color:var(--g400)">'+todayLogHtml+'</div></div></div>'+staffTable+'</div>';
   // 🆕 v6.5: QR auto-fill removed — clock-in is GPS-only
   if (clockTimer) clearInterval(clockTimer);
+  // 🆕 v7.7.6: Track current minute so we can re-render the Clock Out button
+  //            exactly when the schedule end time arrives, without polling.
+  var lastMinute = -1;
   clockTimer = setInterval(function(){
-    var el=document.getElementById('ct'); if(el) el.textContent=new Date().toLocaleTimeString('en-GB');
-    var dl=document.getElementById('cd'); if(dl) dl.textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    var n = new Date();
+    var el=document.getElementById('ct'); if(el) el.textContent=n.toLocaleTimeString('en-GB');
+    var dl=document.getElementById('cd'); if(dl) dl.textContent=n.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    // When the minute rolls over, check if Clock Out should be unlocked now.
+    var thisMinute = n.getHours()*60 + n.getMinutes();
+    if (thisMinute !== lastMinute) {
+      lastMinute = thisMinute;
+      // Only re-render if the current view is still Clock In and the user is
+      // mid-shift (in but not out yet). Cheaper than full renderClockIn.
+      var lockedBtn = document.getElementById('cbtn-out');
+      if (lockedBtn && lockedBtn.dataset.locked === 'schedule' && isEmp && currentUser.empId) {
+        renderClockIn();
+      }
+    }
   },1000);
   checkGPS();
 }
@@ -5549,12 +5815,17 @@ function checkGPS() {
       if(el) el.textContent=msg;
     });
     // disable GPS clock button if out of range
-    var btn = document.getElementById('cbtn');
-    if (btn) {
+    // 🆕 v7.7.6: handle both #cbtn (Clock In) and #cbtn-out (Clock Out) buttons
+    ['cbtn','cbtn-out'].forEach(function(id){
+      var btn = document.getElementById(id);
+      if (!btn) return;
+      // For #cbtn-out, only re-enable if it wasn't already disabled by the
+      // schedule-time guard (those buttons have data-locked="schedule").
+      if (id === 'cbtn-out' && btn.dataset.locked === 'schedule') return;
       btn.disabled = !ok;
       btn.style.opacity = ok ? '1' : '0.45';
-      btn.title = ok ? '' : 'You must be at MiMi Restaurant to clock in';
-    }
+      btn.title = ok ? '' : 'You must be at MiMi Restaurant to clock in/out';
+    });
   }
   if (!navigator.geolocation) { set(false,'GPS not supported on this device'); return; }
   navigator.geolocation.getCurrentPosition(function(pos){
@@ -5568,6 +5839,24 @@ function checkGPS() {
   }, function(err){
     set(false, err.code===1 ? 'Location access denied — please allow' : 'Could not get location');
   }, {enableHighAccuracy:true, timeout:10000});
+}
+
+// 🆕 v7.7.6: Explicit clock-out function for the small Clock Out button.
+//            Phones with delayed UI can no longer accidentally trigger
+//            clock-in via repeated taps — Clock In and Out are separate buttons.
+function doClockOut() {
+  var emp = employees.find(function(e){ return e.id === currentUser.empId; });
+  if (!emp || !emp.clockIn) {
+    toast('You haven\'t clocked in yet today.');
+    return;
+  }
+  if (emp.clockOut) {
+    toast('✓ You already clocked out today.');
+    return;
+  }
+  // Force clockedIn=true so doClock takes the clock-out branch
+  clockedIn = true;
+  doClock('gps');
 }
 
 function doClock(method) {
@@ -5649,6 +5938,13 @@ function doClock(method) {
     }).join('');
   }
   toast((clockedIn?'✅ Clocked in':'✅ Clocked out')+' at '+now);
+  // 🔧 v7.7.4 FIX: Re-render the whole Clock In view so the button label,
+  //                Today's Log, and staff table all reflect the new state
+  //                from attendanceLog (single source of truth) instead of
+  //                using the in-memory clockLog that disappears on refresh.
+  if (typeof renderClockIn === 'function') {
+    setTimeout(renderClockIn, 50);
+  }
 }
 
 function manualClock(empId) {
@@ -7732,6 +8028,28 @@ function fetchInstructionPhotos(cb) {
   apiPost({ action: 'getInstructionPhotos' }, function(d){
     if (d && d.ok && d.photos) {
       instructionPhotos = d.photos;
+    }
+    if (cb) cb();
+  }, true);
+}
+
+// 🆕 v7.7.8: Fetch schedule plan from Sheet for a given week.
+//            Merges into scheduleData[weekKey] without clobbering local edits.
+function fetchSchedulePlan(weekKey, cb) {
+  if (!SHEET_URL) { if (cb) cb(); return; }
+  apiPost({ action: 'getSchedulePlan', weekKey: weekKey }, function(d){
+    if (d && d.ok && Array.isArray(d.schedule)) {
+      // Build/replace scheduleData[weekKey] from authoritative Sheet rows.
+      var bucket = {};
+      d.schedule.forEach(function(r){
+        if (!r.empId || !r.day) return;
+        if (!bucket[r.empId]) bucket[r.empId] = {
+          Mon:'NOT_SET', Tue:'NOT_SET', Wed:'NOT_SET', Thu:'NOT_SET',
+          Fri:'NOT_SET', Sat:'NOT_SET', Sun:'NOT_SET'
+        };
+        bucket[r.empId][r.day] = r.shift || 'NOT_SET';
+      });
+      scheduleData[weekKey] = bucket;
     }
     if (cb) cb();
   }, true);
@@ -10444,6 +10762,7 @@ var SHIFT_OPTIONS = [
   { value:'FULLTIME',    label:'Full-time',   color:'#4A2E1F' },
   { value:'OFF',         label:'Day Off',     color:'#9C9588' },
   { value:'LEAVE',       label:'Leave',       color:'#F59E0B' },
+  { value:'NOT_SET',     label:'— Not set —', color:'#CCCCCC' },  // 🆕 v7.7.8
 ];
 
 // 🆕 v6.7: persist Shift Types via Apps Script so edits survive refresh
@@ -10454,6 +10773,12 @@ function fetchShiftTypes(cb) {
       SHIFT_OPTIONS = d.shifts.map(function(s){
         return { value: s.value, label: s.label, color: s.color };
       });
+      // 🆕 v7.7.8: Always make sure NOT_SET is available as an option,
+      //            even if the Sheet only stores user-managed shift types.
+      //            This is the placeholder for "Owner hasn't decided yet".
+      if (!SHIFT_OPTIONS.some(function(o){ return o.value === 'NOT_SET'; })) {
+        SHIFT_OPTIONS.push({ value:'NOT_SET', label:'— Not set —', color:'#CCCCCC' });
+      }
     }
     if (cb) cb();
   }, true);
@@ -10461,9 +10786,13 @@ function fetchShiftTypes(cb) {
 
 function pushShiftTypes() {
   if (!SHEET_URL) return;
-  var withOrder = SHIFT_OPTIONS.map(function(s, i){
-    return { value: s.value, label: s.label, color: s.color, order: i + 1 };
-  });
+  // 🔧 v7.7.8: Don't persist NOT_SET to Sheet — it's a client-side placeholder
+  //            that fetchShiftTypes re-adds on every load.
+  var withOrder = SHIFT_OPTIONS
+    .filter(function(s){ return s.value !== 'NOT_SET'; })
+    .map(function(s, i){
+      return { value: s.value, label: s.label, color: s.color, order: i + 1 };
+    });
   apiPost({
     action: 'saveShiftTypes',
     shifts: JSON.stringify(withOrder),
@@ -10614,14 +10943,12 @@ function scheduleWeek(dir) {
 function getEmpSchedule(empId, weekKey) {
   if (!scheduleData[weekKey]) scheduleData[weekKey] = {};
   if (!scheduleData[weekKey][empId]) {
-    // default — infer from role
-    var emp = employees.find(function(e){ return e.id===empId; });
-    var role = emp ? emp.role : '';
-    var def = 'FULLTIME';
-    if (role.indexOf('Kitchen')>=0||role.indexOf('Noodle')>=0||role.indexOf('Grill')>=0) def = '08:00-19:00';
-    else if (role.indexOf('Service')>=0) def = '09:00-17:00';
-    else if (role.indexOf('Director')>=0||role.indexOf('Manager')>=0) def = 'FULLTIME';
-    scheduleData[weekKey][empId] = { Mon:def, Tue:def, Wed:def, Thu:def, Fri:def, Sat:'OFF', Sun:'OFF' };
+    // 🔧 v7.7.8: Default to NOT_SET — Owner must explicitly assign each day.
+    //            Prevents auto-filling roles with shifts the Owner didn't pick.
+    scheduleData[weekKey][empId] = {
+      Mon:'NOT_SET', Tue:'NOT_SET', Wed:'NOT_SET', Thu:'NOT_SET',
+      Fri:'NOT_SET', Sat:'NOT_SET', Sun:'NOT_SET'
+    };
   }
   return scheduleData[weekKey][empId];
 }
@@ -10634,7 +10961,25 @@ function setShift(empId, dayKey, value, weekKey) {
   // close all dropdowns
   document.querySelectorAll('.shift-dd').forEach(function(dd){ dd.style.display='none'; });
   renderScheduleView();
-  toast('✅ Shift updated / ປ່ຽນກະສຳເລັດ');
+  // 🔧 v7.7.8: Persist to Sheet so other devices see the same plan.
+  if (SHEET_URL) {
+    apiPost({
+      action: 'saveScheduleEntry',
+      weekKey: weekKey,
+      empId: empId,
+      day: dayKey,
+      shift: value,
+      user: currentUser ? currentUser.name : 'Unknown'
+    }, function(d){
+      if (d && d.ok) {
+        toast('✅ Shift saved / ບັນທຶກກະແລ້ວ');
+      } else {
+        toast('⚠️ Saved locally only — sync failed');
+      }
+    }, true);
+  } else {
+    toast('✅ Shift updated / ປ່ຽນກະສຳເລັດ');
+  }
 }
 
 function copyLastWeek() {
@@ -10646,13 +10991,44 @@ function copyLastWeek() {
   }
   scheduleData[thisKey] = JSON.parse(JSON.stringify(scheduleData[lastKey]));
   renderScheduleView();
-  toast('✅ Last week\'s schedule copied');
+  // 🔧 v7.7.8: Persist bulk to Sheet — flatten to (empId, day, shift) entries
+  if (SHEET_URL) {
+    var entries = [];
+    Object.keys(scheduleData[thisKey]).forEach(function(empId){
+      var days = scheduleData[thisKey][empId];
+      ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(function(d){
+        entries.push({ empId: empId, day: d, shift: days[d] || 'NOT_SET' });
+      });
+    });
+    apiPost({
+      action: 'saveScheduleBulk',
+      weekKey: thisKey,
+      entries: JSON.stringify(entries),
+      user: currentUser ? currentUser.name : 'Unknown'
+    }, function(d){
+      if (d && d.ok) toast('✅ Last week copied & saved (' + d.count + ' entries)');
+      else toast('⚠️ Copied locally, sync failed');
+    }, true);
+  } else {
+    toast('✅ Last week\'s schedule copied');
+  }
 }
 
 function renderScheduleView() {
   var r = currentUser ? currentUser.role : 'owner';
   var isEmp = r === 'employee';
   var weekKey = getWeekKey(scheduleWeekOffset);
+  // 🆕 v7.7.8: Fetch this week's plan from Sheet on first viewing.
+  //            Use a flag so we only hit the network once per week per session
+  //            (re-fetch on prev/next, but not on every dropdown render).
+  if (!window._fetchedScheduleWeeks) window._fetchedScheduleWeeks = {};
+  if (SHEET_URL && !window._fetchedScheduleWeeks[weekKey]) {
+    window._fetchedScheduleWeeks[weekKey] = true;
+    fetchSchedulePlan(weekKey, function(){
+      // re-render once data lands
+      renderScheduleView();
+    });
+  }
   var weekDays = getWeekDates(scheduleWeekOffset);
   var sub = document.getElementById('schedule-sub');
 
@@ -10698,13 +11074,21 @@ function renderTeamSchedule(weekKey, weekDays) {
   var dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   var today = new Date();
   var todayKey = dayNames[today.getDay()===0?6:today.getDay()-1];
-  var onToday = employees.filter(function(e){
+  // 🔧 v7.7.8: Count NOT_SET separately so the Owner sees how many days
+  //            still need a decision. NOT_SET is neither working nor off.
+  var onToday = 0, offToday = 0, notSetToday = 0;
+  employees.forEach(function(e){
     var sh = getEmpSchedule(e.id, weekKey);
-    return sh[todayKey] && sh[todayKey] !== 'OFF' && sh[todayKey] !== 'LEAVE';
-  }).length;
-  var offToday = employees.length - onToday;
+    var v = sh[todayKey];
+    if (v === 'OFF' || v === 'LEAVE') offToday++;
+    else if (!v || v === 'NOT_SET') notSetToday++;
+    else onToday++;
+  });
   stats += '<div class="stat s-or" style="padding:10px;text-align:center"><div class="stat-label">Working Today</div><div class="stat-val">'+onToday+'</div></div>';
   stats += '<div class="stat s-re" style="padding:10px;text-align:center"><div class="stat-label">Day Off / Leave</div><div class="stat-val">'+offToday+'</div></div>';
+  if (notSetToday > 0) {
+    stats += '<div class="stat" style="padding:10px;text-align:center;background:#FEF3C7;border:1.5px dashed #F59E0B"><div class="stat-label" style="color:#92400E">⚠️ Not Set</div><div class="stat-val" style="color:#92400E">'+notSetToday+'</div></div>';
+  }
   stats += '<div class="stat s-gr" style="padding:10px;text-align:center"><div class="stat-label">Total Staff</div><div class="stat-val">'+employees.length+'</div></div>';
   stats += '</div>';
 
@@ -10741,7 +11125,7 @@ function renderTeamSchedule(weekKey, weekDays) {
         var to   = new Date(lr.toDate||lr.to||lr.fromDate||lr.from||'');
         return d.date >= from && d.date <= to;
       });
-      var shift = onLeave ? 'LEAVE' : (empSched[dayKey] || 'OFF');
+      var shift = onLeave ? 'LEAVE' : (empSched[dayKey] || 'NOT_SET');
       var opt = SHIFT_OPTIONS.find(function(o){ return o.value===shift; }) || SHIFT_OPTIONS[SHIFT_OPTIONS.length-1];
       var isToday = d.date.toDateString() === today.toDateString();
 
@@ -10753,8 +11137,14 @@ function renderTeamSchedule(weekKey, weekDays) {
       } else {
         // clickable dropdown
         var ddId = 'shift-dd-'+emp.id+'-'+dayKey;
-        html += '<div class="shift-cell" onclick="toggleShiftDD(\''+emp.id+'\',\''+dayKey+'\',\''+weekKey+'\')" style="background:'+(shift==='OFF'?'var(--g100)':opt.color)+';color:'+(shift==='OFF'?'var(--g600)':'#fff')+';border-radius:6px;padding:5px 4px;font-size:10px;font-weight:600;cursor:pointer;user-select:none">'
-          + opt.label + ' ▾</div>';
+        // 🔧 v7.7.8: NOT_SET state shows as a dashed grey "Set —" placeholder
+        //            so the Owner can see at a glance which days still need a decision.
+        var isNotSet = (shift === 'NOT_SET');
+        var cellStyle = isNotSet
+          ? 'background:#fff;color:var(--g400);border:1.5px dashed var(--g300);border-radius:6px;padding:4px;font-size:10px;font-weight:600;cursor:pointer;user-select:none'
+          : 'background:'+(shift==='OFF'?'var(--g100)':opt.color)+';color:'+(shift==='OFF'?'var(--g600)':'#fff')+';border-radius:6px;padding:5px 4px;font-size:10px;font-weight:600;cursor:pointer;user-select:none';
+        var cellLabel = isNotSet ? 'Set ▾' : (opt.label + ' ▾');
+        html += '<div class="shift-cell" onclick="toggleShiftDD(\''+emp.id+'\',\''+dayKey+'\',\''+weekKey+'\')" style="'+cellStyle+'">'+cellLabel+'</div>';
         // dropdown
         html += '<div class="shift-dd" id="'+ddId+'" style="display:none;position:absolute;top:100%;left:50%;transform:translateX(-50%);z-index:200;background:#fff;border-radius:8px;box-shadow:var(--sh2);min-width:140px;overflow:hidden;border:1px solid var(--g100)">';
         SHIFT_OPTIONS.forEach(function(o){
@@ -10813,16 +11203,27 @@ function renderMySchedule(weekKey, weekDays) {
       var to   = new Date(lr.toDate||lr.to||lr.fromDate||lr.from||'');
       return d.date >= from && d.date <= to;
     });
-    var shift = onLeave ? 'LEAVE' : (empSched[d.key] || 'OFF');
+    var shift = onLeave ? 'LEAVE' : (empSched[d.key] || 'NOT_SET');
     var opt = SHIFT_OPTIONS.find(function(o){ return o.value===shift; }) || SHIFT_OPTIONS[SHIFT_OPTIONS.length-1];
     var isToday = d.date.toDateString() === today.toDateString();
-    var bg = isToday ? opt.color : (shift==='OFF'?'var(--g100)':opt.color+'33');
-    var tc = isToday ? '#fff' : (shift==='OFF'?'var(--g400)':opt.color);
-    html += '<div style="text-align:center;padding:10px 4px;border-radius:var(--rads);background:'+bg+';border:1.5px solid '+(isToday?opt.color:'var(--g100)')+(isToday?';box-shadow:0 2px 8px '+opt.color+'44':'')+'">'
-      + '<div style="font-size:10px;font-weight:700;color:'+(isToday?'rgba(255,255,255,.8)':'var(--g400)')+'">'+d.key+'</div>'
-      + '<div style="font-size:9px;color:'+(isToday?'rgba(255,255,255,.6)':'var(--g400)')+';margin:2px 0">'+d.date.getDate()+'/'+(d.date.getMonth()+1)+'</div>'
-      + '<div style="font-size:10px;font-weight:700;color:'+tc+';margin-top:4px">'+(shift==='LEAVE'?'🏖':'')+opt.label+'</div>'
-      + (isToday?'<div style="font-size:8px;color:rgba(255,255,255,.7);margin-top:2px">TODAY</div>':'')
+    var isNotSetEmp = (shift === 'NOT_SET');
+    // NOT_SET shows as dashed grey, not coloured; not stylised as an active day.
+    var bg, tc, borderClr;
+    if (isNotSetEmp) {
+      bg = '#fff';
+      tc = 'var(--g400)';
+      borderClr = 'var(--g300)';
+    } else {
+      bg = isToday ? opt.color : (shift==='OFF'?'var(--g100)':opt.color+'33');
+      tc = isToday ? '#fff' : (shift==='OFF'?'var(--g400)':opt.color);
+      borderClr = isToday ? opt.color : 'var(--g100)';
+    }
+    var labelText = isNotSetEmp ? '—' : ((shift==='LEAVE'?'🏖':'') + opt.label);
+    html += '<div style="text-align:center;padding:10px 4px;border-radius:var(--rads);background:'+bg+';border:1.5px '+(isNotSetEmp?'dashed':'solid')+' '+borderClr+(isToday && !isNotSetEmp?';box-shadow:0 2px 8px '+opt.color+'44':'')+'">'
+      + '<div style="font-size:10px;font-weight:700;color:'+(isToday && !isNotSetEmp?'rgba(255,255,255,.8)':'var(--g400)')+'">'+d.key+'</div>'
+      + '<div style="font-size:9px;color:'+(isToday && !isNotSetEmp?'rgba(255,255,255,.6)':'var(--g400)')+';margin:2px 0">'+d.date.getDate()+'/'+(d.date.getMonth()+1)+'</div>'
+      + '<div style="font-size:10px;font-weight:700;color:'+tc+';margin-top:4px">'+labelText+'</div>'
+      + (isToday && !isNotSetEmp?'<div style="font-size:8px;color:rgba(255,255,255,.7);margin-top:2px">TODAY</div>':'')
       + '</div>';
   });
   html += '</div>';
@@ -10990,7 +11391,14 @@ document.getElementById('emp-modal').addEventListener('click', function(e){ if(e
 function buildIDCardHTML(e, forPrint) {
   var bg = forPrint ? '' : 'transform:scale(0.85);transform-origin:top left;';
   var initStr = inits(e.name);
-  var days = Math.max(0, Math.floor((new Date(e.contractEnd)-new Date())/86400000));
+  // 🔧 v7.7.5 FIX: NaNd guard
+  var days = 0;
+  if (e.contractEnd) {
+    var endD = new Date(e.contractEnd);
+    if (!isNaN(endD.getTime())) {
+      days = Math.max(0, Math.floor((endD - new Date()) / 86400000));
+    }
+  }
   return '<div class="id-card-wrap" style="'+bg+'">' +
     '<div class="id-card">' +
       // Header bar
@@ -11334,6 +11742,9 @@ function renderSettings() {
   if (isOwner2) html += '<button class="btn btn-pr" onclick="addShiftType()" style="font-size:11px;padding:6px 12px">+ Add Shift</button>';
   html += '</div><div style="display:flex;flex-wrap:wrap;gap:8px">';
   SHIFT_OPTIONS.forEach(function(sh) {
+    // 🔧 v7.7.8: Hide NOT_SET in Settings list — it's a system placeholder,
+    //            not a user-managed shift type.
+    if (sh.value === 'NOT_SET') return;
     var isFixed = sh.value==='OFF'||sh.value==='LEAVE';
     html += '<div style="display:flex;align-items:center;gap:6px;background:var(--g50);border:1px solid var(--g100);border-radius:8px;padding:6px 10px">'
       + '<span style="width:10px;height:10px;border-radius:50%;background:'+sh.color+';flex-shrink:0;display:inline-block"></span>'
@@ -11685,7 +12096,7 @@ function addShiftType() {
   var endT = prompt('End time (e.g. 14:00):');
   if (!endT) return;
   var colors = ['#6BA368','#E8821A','#3B82F6','#8B5CF6','#E91E63','#00BCD4','#FF5722'];
-  var color = colors[SHIFT_OPTIONS.filter(function(s){return s.value!=='OFF'&&s.value!=='LEAVE'&&s.value!=='FULLTIME';}).length % colors.length];
+  var color = colors[SHIFT_OPTIONS.filter(function(s){return s.value!=='OFF'&&s.value!=='LEAVE'&&s.value!=='FULLTIME'&&s.value!=='NOT_SET';}).length % colors.length];
   var value = startT.trim()+'-'+endT.trim();
   if (SHIFT_OPTIONS.find(function(s){return s.value===value;})) { toast('Shift already exists'); return; }
   // Insert before FULLTIME/OFF/LEAVE
@@ -11702,6 +12113,11 @@ function editShiftType(value) {
   var idx = SHIFT_OPTIONS.findIndex(function(s){return s.value===value;});
   if (idx < 0) return;
   var s = SHIFT_OPTIONS[idx];
+  // 🔧 v7.7.8: NOT_SET is the system "no decision" placeholder — never editable.
+  if (s.value === 'NOT_SET') {
+    toast('— Not set — is a system placeholder and cannot be edited.');
+    return;
+  }
   // Don't let users break the special non-time entries
   if (s.value==='FULLTIME' || s.value==='OFF' || s.value==='LEAVE') {
     var newLabel = prompt('Edit label:', s.label);
@@ -11732,6 +12148,12 @@ function editShiftType(value) {
 }
 
 function deleteShiftType(value) {
+  // 🔧 v7.7.8: NOT_SET is system-managed and must always be present in the
+  //            dropdown. Owners can't delete it.
+  if (value === 'NOT_SET') {
+    toast('— Not set — is a system placeholder and cannot be deleted.');
+    return;
+  }
   var idx = SHIFT_OPTIONS.findIndex(function(s){return s.value===value;});
   if (idx < 0) return;
   if (!confirm('Delete shift: '+SHIFT_OPTIONS[idx].label+'?')) return;
