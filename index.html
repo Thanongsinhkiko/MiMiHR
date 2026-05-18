@@ -6148,11 +6148,19 @@ function manualClock(empId) {
 
   if (action === 'clockOut') {
     // Validate chronology before recording clock-out
+    // 🔧 v7.7.19: Allow cross-midnight shifts — if outMin < inMin, treat as
+    //             next-day clock-out (e.g. clock-in 22:00, clock-out 06:00).
+    //             Only block if the gap would be nonsensical (< 5 min same day).
     var inMin  = timeStrToMinutes(e.clockIn);
     var outMin = timeStrToMinutes(now);
-    if (inMin !== null && outMin !== null && outMin < inMin) {
-      toast('⚠️ Cannot clock out '+e.name+' — current time ('+now+') is before clock-in ('+e.clockIn+').');
-      return;
+    if (inMin !== null && outMin !== null) {
+      var gap = outMin >= inMin ? outMin - inMin : outMin + 24*60 - inMin;
+      if (gap < 5) {
+        // Same-day, less than 5 min — likely misclick
+        toast('⚠️ Cannot clock out '+e.name+' — only '+gap+' min since clock-in ('+e.clockIn+'). Wait a moment.');
+        return;
+      }
+      // gap >= 5 min: allow (includes cross-midnight shifts)
     }
   }
 
