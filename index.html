@@ -2613,6 +2613,10 @@ function openEmployee(id) {
         '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">Phone</span><span class="bi-lo">ເບີໂທ</span></span></label>'+
         '<input class="fc" id="ep-phone" value="'+escHtml(e.phone||'')+'"></div>'+
         '</div>'+
+        '<div class="frow" style="margin-bottom:11px">'+
+        '<div class="fg2"><label style="font-size:10px;font-weight:600;color:var(--g600);text-transform:uppercase;display:block;margin-bottom:4px"><span class="bi"><span class="bi-en">📧 Email (for notifications)</span><span class="bi-lo">📧 Email (ສຳລັບ notification)</span></span></label>'+
+        '<input class="fc" id="ep-email" type="email" placeholder="example@gmail.com" value="'+escHtml(e.email||'')+'"></div>'+
+        '</div>'+
         '<div class="info-item"><label>Status</label><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div>';
 
       document.getElementById('mp-employ').innerHTML =
@@ -2640,6 +2644,14 @@ function openEmployee(id) {
         '<div class="info-item"><label>Origin</label><span>'+escHtml(e.origin||'')+'</span></div>'+
         '<div class="info-item"><label><span class="bi"><span class="bi-en">Religion</span><span class="bi-lo">ສາສະໜາ</span></span></label><span>'+escHtml(e.religion||'')+'</span></div>'+
         '<div class="info-item"><label>Status</label><span class="badge '+sb+'">'+statusLabel(e.status)+'</span></div>'+
+        '</div>'+
+        '<div style="margin-top:14px;background:#F5EDD8;border-radius:8px;padding:12px 14px">'+
+        '<label style="font-size:10px;font-weight:600;color:var(--br);text-transform:uppercase;display:block;margin-bottom:6px">📧 Email ຂອງຂ້ອຍ (ສຳລັບ notification)</label>'+
+        '<div style="display:flex;gap:8px;align-items:center">'+
+        '<input class="fc" id="ep-myemail" type="email" placeholder="yourname@gmail.com" value="'+escHtml(e.email||'')+'" style="flex:1;font-size:13px">'+
+        '<button onclick="saveMyEmail()" style="background:var(--or);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">💾 Save</button>'+
+        '</div>'+
+        '<div style="font-size:10px;color:var(--g400);margin-top:5px">ໃສ່ Gmail ຂອງເຈົ້າ — ເຈົ້າຈະໄດ້ຮັບ notification Clock In/Out, Leave, ເງິນເດືອນ</div>'+
         '</div>';
       document.getElementById('mp-employ').innerHTML =
         '<div class="info-grid">'+
@@ -4671,6 +4683,7 @@ function saveProfile() {
   var origin  = (document.getElementById('ep-origin')||{}).value||emp.origin;
   var religion= (document.getElementById('ep-religion')||{}).value||emp.religion;
   var phone   = (document.getElementById('ep-phone')||{}).value||emp.phone||'';
+  var email   = ((document.getElementById('ep-email')||{}).value||emp.email||'').trim().toLowerCase();
   var role    = (document.getElementById('ep-role')||{}).value||emp.role;
   var salary  = parseInt((document.getElementById('ep-salary')||{}).value)||emp.salary;
   var cstart  = (document.getElementById('ep-cstart')||{}).value||emp.contractStart;
@@ -4678,7 +4691,7 @@ function saveProfile() {
 
   // update in-memory
   emp.name=name; emp.age=age; emp.origin=origin; emp.religion=religion;
-  emp.phone=phone; emp.role=role; emp.salary=salary;
+  emp.phone=phone; emp.email=email; emp.role=role; emp.salary=salary;
   emp.contractStart=cstart; emp.contractEnd=cend;
 
   // update account name if exists
@@ -4690,11 +4703,41 @@ function saveProfile() {
   printEmployee = emp;
 
   // sync to sheets
-  if(SHEET_URL) pushUpdateEmployee({id:emp.id, name:name, age:age, origin:origin, religion:religion, phone:phone, role:role, salary:salary, contractStart:cstart, contractEnd:cend});
+  if(SHEET_URL) pushUpdateEmployee({id:emp.id, name:name, age:age, origin:origin, religion:religion, phone:phone, email:email, role:role, salary:salary, contractStart:cstart, contractEnd:cend});
   logEvent('edit','Profile updated', name+' — role:'+role+', salary:'+salary);
   renderEmployees(employees);
   renderDashboard();
   toast('✅ Profile saved for '+name+'!');
+}
+
+// 🆕 v7.7.17: Employee self-service email update
+function saveMyEmail() {
+  if (!currentUser || !currentUser.empId) { toast('Please log in first'); return; }
+  var inp = document.getElementById('ep-myemail');
+  if (!inp) return;
+  var email = inp.value.trim().toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    toast('❌ Email format ບໍ່ຖືກ — ຕົວຢ່າງ: name@gmail.com');
+    return;
+  }
+  var emp = null;
+  for (var i = 0; i < employees.length; i++) {
+    if (employees[i].id === currentUser.empId) { emp = employees[i]; break; }
+  }
+  if (!emp) { toast('Employee record not found'); return; }
+  emp.email = email;
+  if (SHEET_URL) {
+    apiPost({ action:'saveMyEmail', empId:currentUser.empId, email:email, user:currentUser.name }, function(d) {
+      if (d && d.ok) {
+        toast(email ? '✅ Email saved! ເຈົ້າຈະໄດ້ຮັບ notification ຫຼັງຈາກນີ້' : '✅ Email cleared');
+        logEvent('edit','Email updated', currentUser.name+' → '+(email||'cleared'));
+      } else {
+        toast('⚠️ Saved locally only');
+      }
+    }, true);
+  } else {
+    toast(email ? '✅ Email saved locally' : '✅ Email cleared');
+  }
 }
 
 function deleteEmployee() {
@@ -7850,41 +7893,15 @@ function saveAttEdit() {
     user: (currentUser && currentUser.name) || 'Owner'
   }, function(d){
     if (d && d.ok) {
-      // Update local attendanceLog so UI re-renders immediately
-      // Strategy: rebuild the in/out events for that empId+date pair.
-      // Easiest: drop existing same-day events and synthesize new ones from edit.
-      attendanceLog = attendanceLog.filter(function(r){
-        if (r.empId !== empId) return true;
-        var ts = r.timestamp ? new Date(r.timestamp) : (r.date ? new Date(r.date) : null);
-        if (!ts) return true;
-        var laoOff = 7 * 60, locOff = ts.getTimezoneOffset();
-        var dL = new Date(ts.getTime() + (laoOff + locOff) * 60000);
-        var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
-        return ymd !== date;
-      });
-      var emp = employees.find(function(e){ return e.id === empId; });
-      var nm = emp ? emp.name : empId;
-      if (inT) {
-        attendanceLog.push({
-          timestamp: date+'T'+inT+':00+07:00',
-          date: date, empId: empId, name: nm, action: 'clockIn',
-          method: 'edit', clockedBy: (currentUser && currentUser.name) || 'Owner'
-        });
-      }
-      if (outT) {
-        attendanceLog.push({
-          timestamp: date+'T'+outT+':00+07:00',
-          date: date, empId: empId, name: nm, action: 'clockOut',
-          method: 'edit', clockedBy: (currentUser && currentUser.name) || 'Owner'
-        });
-      }
-      hydrateEmployeesFromLog();
-      logEvent('edit', 'Attendance edited', empId+' '+date+' — in: '+(inT||'—')+', out: '+(outT||'—')+', status: '+stat);
+      // 🔧 v7.7.18: Re-fetch from Sheet after edit — guarantees UI matches Sheet.
+      // Previous approach rebuilt local log manually which caused stale display.
       var modal = document.getElementById('att-edit-modal');
       if (modal) modal.remove();
-      // Re-render the profile attendance table
-      if (typeof renderEmployeeAttendance === 'function') renderEmployeeAttendance();
-      toast('Attendance updated ✓');
+      toast('\u2705 Attendance updated — refreshing...');
+      fetchAttendanceLog(function() {
+        if (typeof renderEmployeeAttendance === 'function') renderEmployeeAttendance();
+        logEvent('edit', 'Attendance edited', empId+'\u00a0'+date+' \u2014 in: '+(inT||'\u2014')+', out: '+(outT||'\u2014')+', status: '+stat);
+      });
     } else {
       toast('Update failed: ' + (d && d.error ? d.error : 'unknown'));
     }
