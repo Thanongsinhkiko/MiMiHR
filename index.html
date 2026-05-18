@@ -2319,30 +2319,31 @@ function timeStrToMinutes(v) {
 
 // Returns YYYY-MM-DD in Vientiane time (UTC+7) — independent of device timezone
 function todayKey() {
-  // 🆕 v6.1: force Lao timezone so device timezone doesn't break "today" math
-  var n = new Date();
-  var laoOffset = 7 * 60;
-  var localOffset = n.getTimezoneOffset();
-  var d = new Date(n.getTime() + (laoOffset + localOffset) * 60000);
-  var y = d.getFullYear();
-  var m = ('0'+(d.getMonth()+1)).slice(-2);
-  var dd = ('0'+d.getDate()).slice(-2);
-  return y+'-'+m+'-'+dd;
+  // 🔧 v7.7.20: Use UTC + fixed +7h offset (same fix as toHHMM).
+  var d = new Date(Date.now() + 7 * 60 * 60000);
+  var y  = d.getUTCFullYear();
+  var m  = ('0' + (d.getUTCMonth() + 1)).slice(-2);
+  var dd = ('0' + d.getUTCDate()).slice(-2);
+  return y + '-' + m + '-' + dd;
 }
 
 // Format a Date or ISO string to "HH:MM" in Lao timezone (independent of device tz)
 function toHHMM(t) {
   if (!t) return null;
+  // 🔧 v7.7.20: Handle plain "HH:MM" strings from Sheet directly — no Date parsing needed
+  if (typeof t === 'string' && /^\d{1,2}:\d{2}$/.test(t.trim())) {
+    var parts = t.trim().split(':');
+    return ('0' + parseInt(parts[0], 10)).slice(-2) + ':' + parts[1];
+  }
   var d = (t instanceof Date) ? t : new Date(t);
   if (isNaN(d.getTime())) return null;
   if (d.getFullYear() < 1990) return null;
-  // 🆕 v6.2: ALWAYS extract HH:MM in Lao timezone (UTC+7), regardless of device timezone.
-  //    Without this, a Mac set to Pacific time would show "7:55 AM" as "12:55 AM"
-  //    and our 18:21 PM clock-in could appear as "11:21 AM" elsewhere.
-  var laoOffset = 7 * 60;
-  var localOffset = d.getTimezoneOffset();
-  var dLao = new Date(d.getTime() + (laoOffset + localOffset) * 60000);
-  return ('0'+dLao.getHours()).slice(-2) + ':' + ('0'+dLao.getMinutes()).slice(-2);
+  // 🔧 v7.7.20: Use getUTC* + fixed +7h offset instead of getTimezoneOffset().
+  //   The old approach (laoOffset + localOffset) double-applied the offset on
+  //   Lao phones (UTC+7), turning 8:30 AM into 1:30 AM.
+  //   Fix: always shift UTC by exactly 7h, then read UTC fields.
+  var dLao = new Date(d.getTime() + 7 * 60 * 60000);
+  return ('0' + dLao.getUTCHours()).slice(-2) + ':' + ('0' + dLao.getUTCMinutes()).slice(-2);
 }
 
 // Check whether an employee is on approved leave for today
@@ -2379,10 +2380,8 @@ function hydrateEmployeesFromLog() {
       // Convert timestamp to Lao time before extracting YMD
       var n = new Date(r.timestamp);
       if (isNaN(n.getTime())) return;
-      var laoOffset = 7 * 60;
-      var localOffset = n.getTimezoneOffset();
-      var dLao = new Date(n.getTime() + (laoOffset + localOffset) * 60000);
-      ymd = dLao.getFullYear()+'-'+('0'+(dLao.getMonth()+1)).slice(-2)+'-'+('0'+dLao.getDate()).slice(-2);
+      var dLao = new Date(n.getTime() + 7 * 60 * 60000); // 🔧 v7.7.20 fixed offset
+      ymd = dLao.getUTCFullYear()+'-'+('0'+(dLao.getUTCMonth()+1)).slice(-2)+'-'+('0'+dLao.getUTCDate()).slice(-2);
     } else { return; }
 
     var ts = r.timestamp ? new Date(r.timestamp) : new Date();
@@ -3083,10 +3082,10 @@ function calcSalary(e, attRows, monthOpt, yearOpt) {
         var ts = r.timestamp ? new Date(r.timestamp) : null;
         if (!ts || isNaN(ts.getTime())) return;
         var locOff = ts.getTimezoneOffset();
-        var dL = new Date(ts.getTime() + (laoOffPT + locOff) * 60000);
-        if (dL.getMonth() !== monthIdx || dL.getFullYear() !== yearIdx) return;
-        var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
-        var hhmm = ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+        var dL = new Date(ts.getTime() + 7 * 60 * 60000); // 🔧 v7.7.20
+        if (dL.getUTCMonth() !== monthIdx || dL.getUTCFullYear() !== yearIdx) return;
+        var ymd = dL.getUTCFullYear()+'-'+('0'+(dL.getUTCMonth()+1)).slice(-2)+'-'+('0'+dL.getUTCDate()).slice(-2);
+        var hhmm = ('0'+dL.getUTCHours()).slice(-2)+':'+('0'+dL.getUTCMinutes()).slice(-2);
         if (!ptByDate[ymd]) ptByDate[ymd] = { in:null, out:null };
         if (r.action === 'clockIn'  && (!ptByDate[ymd].in  || hhmm < ptByDate[ymd].in))  ptByDate[ymd].in  = hhmm;
         if (r.action === 'clockOut' && (!ptByDate[ymd].out || hhmm > ptByDate[ymd].out)) ptByDate[ymd].out = hhmm;
@@ -3175,11 +3174,11 @@ function calcSalary(e, attRows, monthOpt, yearOpt) {
       var ts = r.timestamp ? new Date(r.timestamp) : null;
       if (!ts || isNaN(ts.getTime())) return;
       var locOff = ts.getTimezoneOffset();
-      var dL = new Date(ts.getTime() + (laoOff + locOff) * 60000);
-      if (dL.getMonth() !== monthIdx || dL.getFullYear() !== yearIdx) return;
-      var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
-      var hhmm = ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
-      if (!perDate[ymd]) perDate[ymd] = { in:null, out:null, dow: dL.getDay() };
+      var dL = new Date(ts.getTime() + 7 * 60 * 60000);
+      if (dL.getUTCMonth() !== monthIdx || dL.getUTCFullYear() !== yearIdx) return;
+      var ymd = dL.getUTCFullYear()+'-'+('0'+(dL.getUTCMonth()+1)).slice(-2)+'-'+('0'+dL.getUTCDate()).slice(-2);
+      var hhmm = ('0'+dL.getUTCHours()).slice(-2)+':'+('0'+dL.getUTCMinutes()).slice(-2);
+      if (!perDate[ymd]) perDate[ymd] = { in:null, out:null, dow: dL.getUTCDay() };
       if (r.action === 'clockIn'  && (!perDate[ymd].in  || hhmm < perDate[ymd].in))  perDate[ymd].in  = hhmm;
       if (r.action === 'clockOut' && (!perDate[ymd].out || hhmm > perDate[ymd].out)) perDate[ymd].out = hhmm;
     });
@@ -3224,7 +3223,7 @@ function calcSalary(e, attRows, monthOpt, yearOpt) {
 
   var firstDay  = new Date(yearIdx, monthIdx, 1);
   var nextMonth = new Date(yearIdx, monthIdx+1, 1);
-  var laoNowFn = (function(){ var n=new Date(); var lo=7*60; var po=n.getTimezoneOffset(); return new Date(n.getTime()+(lo+po)*60000); })();
+  var laoNowFn = new Date(Date.now() + 7*60*60000); // 🔧 v7.7.20 fixed offset
   // 🆕 v7.3: walk each workday-to-date; check if it has clock-in/leave; count
   //          absent HOURS by schedule (weekday vs weekend) instead of flat 8h.
   var absentDays = 0, absentHours = 0;
@@ -3372,19 +3371,16 @@ function fmtLaoFull(input, opts) {
   opts = opts || {};
   var d = parseLaoTime(input);
   if (!d) return '—';
-  // 🆕 v6.2: Always present in Lao timezone (UTC+7), regardless of device tz.
-  //    Otherwise an ISO timestamp like "07:55:00+07:00" would render as
-  //    "5:55 PM" on a Pacific-time Mac.
-  var laoOffset = 7 * 60;
-  var localOffset = d.getTimezoneOffset();
-  var dLao = new Date(d.getTime() + (laoOffset + localOffset) * 60000);
+  // 🔧 v7.7.20: Use getUTC* + fixed +7h offset (same fix as toHHMM).
+  //   Old approach double-applied offset on Lao phones (UTC+7 devices).
+  var dLao = new Date(d.getTime() + 7 * 60 * 60000);
   var days  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var mons  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var datePart = days[dLao.getDay()] + ' ' + mons[dLao.getMonth()] + ' ' + dLao.getDate() + ' ' + dLao.getFullYear();
-  var h = dLao.getHours();
+  var datePart = days[dLao.getUTCDay()] + ' ' + mons[dLao.getUTCMonth()] + ' ' + dLao.getUTCDate() + ' ' + dLao.getUTCFullYear();
+  var h = dLao.getUTCHours();
   var ampm = h >= 12 ? 'PM' : 'AM';
   h = h % 12; if (h === 0) h = 12;
-  var m = ('0' + dLao.getMinutes()).slice(-2);
+  var m = ('0' + dLao.getUTCMinutes()).slice(-2);
   var timePart = h + ':' + m + ' ' + ampm;
   if (opts.onlyTime) return timePart;
   if (opts.onlyDate) return datePart;
@@ -5724,9 +5720,9 @@ function renderClockIn() {
   var nowLao = (function(){
     var n = new Date();
     var laoOff = 7*60, locOff = n.getTimezoneOffset();
-    return new Date(n.getTime() + (laoOff + locOff)*60000);
+    return new Date(n.getTime() + 7 * 60 * 60000);
   })();
-  var nowMin = nowLao.getHours()*60 + nowLao.getMinutes();
+  var nowMin = nowLao.getUTCHours()*60 + nowLao.getUTCMinutes();
 
   // Compute clock-in time in Lao minutes (clockIn is stored as "HH:MM")
   var inMin = null;
@@ -5818,7 +5814,7 @@ function renderClockIn() {
   var todayKey = (function(){
     var n = new Date();
     var laoOff = 7*60, locOff = n.getTimezoneOffset();
-    var d = new Date(n.getTime() + (laoOff + locOff)*60000);
+    var d = new Date(n.getTime() + 7 * 60 * 60000);
     return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
   })();
   var myTodayEvents = [];
@@ -5828,8 +5824,8 @@ function renderClockIn() {
       var d = r.timestamp ? new Date(r.timestamp) : (r.date ? new Date(r.date) : null);
       if (!d) return false;
       var laoOff = 7*60, locOff = d.getTimezoneOffset();
-      var dL = new Date(d.getTime() + (laoOff + locOff)*60000);
-      var key = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+      var dL = new Date(d.getTime() + 7 * 60 * 60000);
+      var key = dL.getUTCFullYear()+'-'+('0'+(dL.getUTCMonth()+1)).slice(-2)+'-'+('0'+dL.getUTCDate()).slice(-2);
       return key === todayKey;
     }).sort(function(a,b){
       return new Date(a.timestamp||a.date||0) - new Date(b.timestamp||b.date||0);
@@ -5840,8 +5836,8 @@ function renderClockIn() {
     todayLogHtml = myTodayEvents.map(function(r){
       var d = r.timestamp ? new Date(r.timestamp) : new Date(r.date);
       var laoOff = 7*60, locOff = d.getTimezoneOffset();
-      var dL = new Date(d.getTime() + (laoOff + locOff)*60000);
-      var h = dL.getHours(), m = ('0'+dL.getMinutes()).slice(-2);
+      var dL = new Date(d.getTime() + 7 * 60 * 60000);
+      var h = dL.getUTCHours(), m = ('0'+dL.getUTCMinutes()).slice(-2);
       var ap = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12;
       var label = r.action === 'clockIn'
         ? '<span class="badge bg-gr" style="font-size:10px">in / ເຂົ້າ</span>'
@@ -6239,9 +6235,9 @@ function renderLeaveList(isEmp, canApprove, myEmpId) {
         var dS = new Date(r.submittedAt);
         if (!isNaN(dS.getTime())) {
           var lo = 7*60, po = dS.getTimezoneOffset();
-          var dL = new Date(dS.getTime()+(lo+po)*60000);
-          subTime = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2)
-                  + ' ' + ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+          var dL = new Date(dS.getTime()+7 * 60 * 60000);
+          subTime = dL.getUTCFullYear()+'-'+('0'+(dL.getUTCMonth()+1)).slice(-2)+'-'+('0'+dL.getUTCDate()).slice(-2)
+                  + ' ' + ('0'+dL.getUTCHours()).slice(-2)+':'+('0'+dL.getUTCMinutes()).slice(-2);
         }
       } catch(e) {}
       if (subTime) metaParts.push('Submitted: '+subTime);
@@ -6252,9 +6248,9 @@ function renderLeaveList(isEmp, canApprove, myEmpId) {
         var dU = new Date(r.updatedAt);
         if (!isNaN(dU.getTime())) {
           var lo2 = 7*60, po2 = dU.getTimezoneOffset();
-          var dL2 = new Date(dU.getTime()+(lo2+po2)*60000);
-          actTime = dL2.getFullYear()+'-'+('0'+(dL2.getMonth()+1)).slice(-2)+'-'+('0'+dL2.getDate()).slice(-2)
-                  + ' ' + ('0'+dL2.getHours()).slice(-2)+':'+('0'+dL2.getMinutes()).slice(-2);
+          var dL2 = new Date(dU.getTime() + 7*60*60000); // 🔧 v7.7.20
+          actTime = dL2.getUTCFullYear()+'-'+('0'+(dL2.getUTCMonth()+1)).slice(-2)+'-'+('0'+dL2.getUTCDate()).slice(-2)
+                  + ' ' + ('0'+dL2.getUTCHours()).slice(-2)+':'+('0'+dL2.getUTCMinutes()).slice(-2);
         }
       } catch(e) {}
       if (actTime) metaParts.push((r.status==='approved'?'Approved':'Rejected')+': '+actTime);
@@ -7539,8 +7535,8 @@ function _histDayKey(d) {
   // YYYY-MM-DD in Lao time
   var laoOff = 7 * 60;
   var locOff = d.getTimezoneOffset();
-  var dL = new Date(d.getTime() + (laoOff + locOff) * 60000);
-  return dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+  var dL = new Date(d.getTime() + 7 * 60 * 60000);
+  return dL.getUTCFullYear()+'-'+('0'+(dL.getUTCMonth()+1)).slice(-2)+'-'+('0'+dL.getUTCDate()).slice(-2);
 }
 
 function _currentHistDate() {
@@ -7561,8 +7557,8 @@ function renderHistDay() {
   var weekdaysLo = ['ອາທິດ','ຈັນ','ອັງຄານ','ພຸດ','ພະຫັດ','ສຸກ','ເສົາ'];
   var laoOff = 7 * 60;
   var locOff = d.getTimezoneOffset();
-  var dL = new Date(d.getTime() + (laoOff + locOff) * 60000);
-  var labelText = weekdays[dL.getDay()] + ', ' + dayKey;
+  var dL = new Date(d.getTime() + 7 * 60 * 60000);
+  var labelText = weekdays[dL.getUTCDay()] + ', ' + dayKey;
   if (histDayOffset === 0) labelText = 'Today — ' + labelText;
   else if (histDayOffset === -1) labelText = 'Yesterday — ' + labelText;
   label.textContent = labelText;
@@ -7677,7 +7673,7 @@ function renderActivityLog() {
     if (ts) {
       var laoOffset = 7 * 60;
       var localOffset = ts.getTimezoneOffset();
-      tsLao = new Date(ts.getTime() + (laoOffset + localOffset) * 60000);
+      tsLao = new Date(ts.getTime() + 7 * 60 * 60000);
     }
     var dateStr = tsLao ? (tsLao.getFullYear()+'-'+('0'+(tsLao.getMonth()+1)).slice(-2)+'-'+('0'+tsLao.getDate()).slice(-2)) : (r.date||'—');
     var timeStr = tsLao ? (function(){
@@ -7770,8 +7766,8 @@ function renderEmployeeAttendance() {
     // 🆕 v6.2: Use Lao timezone for display
     var laoOffset = 7 * 60;
     var localOffset = d.getTimezoneOffset();
-    var dLao = new Date(d.getTime() + (laoOffset + localOffset) * 60000);
-    var h=dLao.getHours(), m=('0'+dLao.getMinutes()).slice(-2);
+    var dLao = new Date(d.getTime() + 7 * 60 * 60000);
+    var h=dLao.getUTCHours(), m=('0'+dLao.getUTCMinutes()).slice(-2);
     var ap = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12;
     return h+':'+m+' '+ap;
   }
@@ -7792,8 +7788,8 @@ function renderEmployeeAttendance() {
         // using today-pinned dates so cross-midnight (e.g. 11pm → 7am) works.
         var laoOff = 7 * 60;
         var locOff = r.in.getTimezoneOffset();
-        var inL  = new Date(r.in.getTime()  + (laoOff + locOff) * 60000);
-        var outL = new Date(r.out.getTime() + (laoOff + locOff) * 60000);
+        var inL  = new Date(r.in.getTime()  + 7 * 60 * 60000);
+        var outL = new Date(r.out.getTime() + 7 * 60 * 60000);
         var inMin  = inL.getHours()*60  + inL.getMinutes();
         var outMin = outL.getHours()*60 + outL.getMinutes();
         if (outMin < inMin) outMin += 24*60;  // crossed midnight
@@ -7810,8 +7806,8 @@ function renderEmployeeAttendance() {
       if (!d) return '';
       var laoOff = 7 * 60;
       var locOff = d.getTimezoneOffset();
-      var dL = new Date(d.getTime() + (laoOff + locOff) * 60000);
-      return ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+      var dL = new Date(d.getTime() + 7 * 60 * 60000);
+      return ('0'+dL.getUTCHours()).slice(-2)+':'+('0'+dL.getUTCMinutes()).slice(-2);
     }
     var actionsHtml = canEdit
       ? '<td style="white-space:nowrap"><button onclick="openAttEditModal(\''+empId+'\',\''+r.date+'\',\''+hhmm(r.in)+'\',\''+hhmm(r.out)+'\',\''+status+'\')" style="background:none;border:1px solid var(--g200);border-radius:6px;padding:3px 7px;font-size:11px;cursor:pointer;color:var(--br);margin-right:3px" title="Edit">✏️</button>'
@@ -7934,8 +7930,8 @@ function confirmDeleteAtt(empId, date) {
         var ts = r.timestamp ? new Date(r.timestamp) : (r.date ? new Date(r.date) : null);
         if (!ts) return true;
         var laoOff = 7 * 60, locOff = ts.getTimezoneOffset();
-        var dL = new Date(ts.getTime() + (laoOff + locOff) * 60000);
-        var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+        var dL = new Date(ts.getTime() + 7 * 60 * 60000);
+        var ymd = dL.getUTCFullYear()+'-'+('0'+(dL.getUTCMonth()+1)).slice(-2)+'-'+('0'+dL.getUTCDate()).slice(-2);
         return ymd !== date;
       });
       hydrateEmployeesFromLog();
@@ -8131,11 +8127,11 @@ function collectPersonalData(e, fromDate, toDate) {
       var ts = r.timestamp ? new Date(r.timestamp) : null;
       if (!ts || isNaN(ts.getTime())) return;
       var locOff = ts.getTimezoneOffset();
-      var dL = new Date(ts.getTime() + (laoOff + locOff) * 60000);
-      var ymd = dL.getFullYear()+'-'+('0'+(dL.getMonth()+1)).slice(-2)+'-'+('0'+dL.getDate()).slice(-2);
+      var dL = new Date(ts.getTime() + 7 * 60 * 60000);
+      var ymd = dL.getUTCFullYear()+'-'+('0'+(dL.getUTCMonth()+1)).slice(-2)+'-'+('0'+dL.getUTCDate()).slice(-2);
       if (ymd < fromDate || ymd > toDate) return;
-      var hhmm = ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
-      if (!perDate[ymd]) perDate[ymd] = { date:ymd, in:null, out:null, dow: dL.getDay() };
+      var hhmm = ('0'+dL.getUTCHours()).slice(-2)+':'+('0'+dL.getUTCMinutes()).slice(-2);
+      if (!perDate[ymd]) perDate[ymd] = { date:ymd, in:null, out:null, dow: dL.getUTCDay() };
       if (r.action === 'clockIn'  && (!perDate[ymd].in  || hhmm < perDate[ymd].in))  perDate[ymd].in  = hhmm;
       if (r.action === 'clockOut' && (!perDate[ymd].out || hhmm > perDate[ymd].out)) perDate[ymd].out = hhmm;
     });
@@ -9263,8 +9259,8 @@ function renderMonthly() {
         if (!isNaN(dT.getTime())) {
           var laoOff = 7 * 60;
           var locOff = dT.getTimezoneOffset();
-          var dL = new Date(dT.getTime() + (laoOff + locOff) * 60000);
-          hhmm = ('0'+dL.getHours()).slice(-2)+':'+('0'+dL.getMinutes()).slice(-2);
+          var dL = new Date(dT.getTime() + 7 * 60 * 60000);
+          hhmm = ('0'+dL.getUTCHours()).slice(-2)+':'+('0'+dL.getUTCMinutes()).slice(-2);
         }
       }
       if (rEv.action === 'clockIn'  && !perEmpMonth[rEv.empId][ymd].in)  perEmpMonth[rEv.empId][ymd].in  = hhmm;
@@ -9281,7 +9277,7 @@ function renderMonthly() {
   // Don't count workdays past today as "absent"
   var laoNow = (function(){
     var n = new Date(); var lo = 7*60; var po = n.getTimezoneOffset();
-    return new Date(n.getTime()+(lo+po)*60000);
+    return new Date(n.getTime()+7 * 60 * 60000);
   })();
   var workdaysToDate = 0;
   for (var dE = new Date(firstDay); dE < nextMonth && dE <= laoNow; dE.setDate(dE.getDate()+1)) {
@@ -9549,8 +9545,8 @@ function exportAttCSV(fromDate, toDate) {
         if (!isNaN(d.getTime())) {
           var laoOffset = 7 * 60;
           var localOffset = d.getTimezoneOffset();
-          var dLao = new Date(d.getTime() + (laoOffset + localOffset) * 60000);
-          hhmm = ('0'+dLao.getHours()).slice(-2)+':'+('0'+dLao.getMinutes()).slice(-2);
+          var dLao = new Date(d.getTime() + 7 * 60 * 60000);
+          hhmm = ('0'+dLao.getUTCHours()).slice(-2)+':'+('0'+dLao.getUTCMinutes()).slice(-2);
         }
       }
       if (r.action === 'clockIn'  && !perEmp[r.empId][ymd].in)  perEmp[r.empId][ymd].in  = hhmm;
@@ -9584,7 +9580,7 @@ function exportAttCSV(fromDate, toDate) {
   var d1 = new Date(fromDate+'T00:00:00+07:00');
   var d2 = new Date(toDate+'T00:00:00+07:00');
   // Get "today" in Lao tz so workdays past today don't count as absent
-  var laoNowFn = (function(){ var n=new Date(); var lo=7*60; var po=n.getTimezoneOffset(); return new Date(n.getTime()+(lo+po)*60000); })();
+  var laoNowFn = new Date(Date.now() + 7*60*60000); // 🔧 v7.7.20 fixed offset
   var todayLao = new Date(laoNowFn.getFullYear(), laoNowFn.getMonth(), laoNowFn.getDate());
   var endCap = d2 < todayLao ? d2 : todayLao;
   for (var dd = new Date(d1); dd <= endCap; dd.setDate(dd.getDate()+1)) {
