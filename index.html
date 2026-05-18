@@ -2570,6 +2570,9 @@ function openEmployee(id) {
   printEmployee = e;
 
   try {
+    var r = currentUser.role;
+    var isOwner   = r==='owner';
+    var isManager = r==='manager';
     // header
     var av = document.getElementById('m-av');
     var big = document.getElementById('mp-photo-big');
@@ -2697,9 +2700,6 @@ function openEmployee(id) {
     document.getElementById('emp-modal').classList.add('open');
 
     // ---- TAB VISIBILITY BY ROLE ----
-    var r = currentUser.role;
-    var isOwner   = r==='owner';
-    var isManager = r==='manager';
     var isEmpSelf = r==='employee' && currentUser.empId===e.id; // employee viewing own profile
 
     // tabs visible to everyone: Profile, Attendance, Performance (own only for employee)
@@ -5714,7 +5714,7 @@ function renderClockIn() {
   //             Owner can override via Manual Clock Out (v7.7.13) for exceptions.
   var COOLDOWN_MIN = (typeof PAYROLL !== 'undefined' && PAYROLL.clockOutCooldownMin != null)
     ? PAYROLL.clockOutCooldownMin
-    : 360; // default 6 hours
+    : 30; // 🔧 v7.7.20: default 30 min (prevents misclick only)
 
   // Compute "now" in Lao time once
   var nowLao = (function(){
@@ -5953,12 +5953,12 @@ function checkGPS() {
     var dLat=(MIMI_LAT-lat1)*Math.PI/180, dLon=(MIMI_LNG-lon1)*Math.PI/180;
     var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(MIMI_LAT*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
     var dist=Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
-    var radius=parseInt((document.getElementById('gps-radius')||{value:'200'}).value);
+    var radius=parseInt((document.getElementById('gps-radius')||{value:'500'}).value);
     var ok = dist < radius;
     set(ok, ok ? '✅ In range — '+dist+'m from MiMi' : '❌ Too far — '+dist+'m away (max '+radius+'m)');
   }, function(err){
     set(false, err.code===1 ? 'Location access denied — please allow' : 'Could not get location');
-  }, {enableHighAccuracy:true, timeout:10000});
+  }, {enableHighAccuracy:true, timeout:15000, maximumAge:60000});
 }
 
 // 🆕 v7.7.6: Explicit clock-out function for the small Clock Out button.
@@ -5968,7 +5968,6 @@ function checkGPS() {
 //             phones always see WHY the button didn't work. Previously,
 //             silent fall-through made the button feel broken.
 function doClockOut() {
-  // Diagnostic: confirm button click was received
   console.log('[doClockOut] button clicked');
 
   if (!currentUser || !currentUser.empId) {
@@ -5988,9 +5987,53 @@ function doClockOut() {
     toast('✓ You already clocked out today.');
     return;
   }
-  // Force clockedIn=true so doClock takes the clock-out branch
+
+  // 🔧 v7.7.22: Re-request GPS fresh for clock-out so location popup appears.
+  //   Previously doClockOut relied on the cached loc-dot from renderClockIn,
+  //   which could be stale/bad. Now we always ask for a fresh position first,
+  //   then proceed to clock out only after GPS confirms location.
   clockedIn = true;
-  doClock('gps');
+
+  if (!navigator.geolocation) {
+    // No GPS support — let doClock handle the error message
+    doClock('gps');
+    return;
+  }
+
+  toast('⏳ ກຳລັງກວດ GPS... ກາລຸນາ ອະນຸຍາດ location');
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      // GPS success — update the loc-dot then proceed
+      var R=6371000, lat1=pos.coords.latitude, lon1=pos.coords.longitude;
+      var dLat=(MIMI_LAT-lat1)*Math.PI/180, dLon=(MIMI_LNG-lon1)*Math.PI/180;
+      var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(MIMI_LAT*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+      var dist=Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
+      var radius=parseInt((document.getElementById('gps-radius')||{value:'500'}).value);
+      var ok = dist < radius;
+      // Update loc-dot so doClock sees correct state
+      ['loc-dot','loc-dot2'].forEach(function(id){
+        var el=document.getElementById(id);
+        if(el){ el.className='loc-dot'+(ok?'':' bad'); }
+      });
+      ['loc-text','loc-text2'].forEach(function(id){
+        var el=document.getElementById(id);
+        if(el){ el.textContent = ok ? '✅ In range — '+dist+'m from MiMi' : '❌ Too far — '+dist+'m (max '+radius+'m)'; }
+      });
+      if (ok) {
+        doClock('gps');
+      } else {
+        toast('❌ ຢູ່ໄກຈາກ MiMi ເກີນໄປ ('+dist+'m). ຕ້ອງຢູ່ໃນ '+radius+'m.');
+      }
+    },
+    function(err) {
+      // GPS error — show meaningful message
+      var msg = err.code === 1
+        ? '❌ ກາລຸນາ ອະນຸຍາດ location ໃນ browser settings'
+        : '❌ GPS error — ລອງໃໝ່ ຫຼື ຕິດຕໍ່ Owner';
+      toast(msg);
+    },
+    {enableHighAccuracy:true, timeout:15000, maximumAge:30000}
+  );
 }
 
 function doClock(method) {
@@ -10627,8 +10670,8 @@ function renderSettings() {
          + '<input class="fc" id="ps-ot-buffer" type="number" min="0" max="120" value="'+(typeof PAYROLL!=="undefined"?PAYROLL.otBufferMin:30)+'" style="width:100%;font-size:13px"></div>';
     // 🆕 v7.7.15: Clock-out cooldown — minutes after Clock In before Clock Out unlocks
     html += '<div style="background:#FEF3E7;border-radius:8px;padding:10px;border:1px solid #F59E0B"><div style="font-size:11px;color:#92400E;margin-bottom:4px;font-weight:600">⏱ Clock-Out cooldown (min)</div>'
-         + '<div style="font-size:10px;color:var(--g400);margin-bottom:6px">Prevents accidental clock-out. Default 360 (6h).</div>'
-         + '<input class="fc" id="ps-cooldown" type="number" min="0" max="720" value="'+(typeof PAYROLL!=="undefined" && PAYROLL.clockOutCooldownMin != null ? PAYROLL.clockOutCooldownMin : 360)+'" style="width:100%;font-size:13px"></div>';
+         + '<div style="font-size:10px;color:var(--g400);margin-bottom:6px">Prevents accidental clock-out. Default 30 min.</div>'
+         + '<input class="fc" id="ps-cooldown" type="number" min="0" max="720" value="'+(typeof PAYROLL!=="undefined" && PAYROLL.clockOutCooldownMin != null ? PAYROLL.clockOutCooldownMin : 30)+'" style="width:100%;font-size:13px"></div>';
     html += '</div>';
     html += '<div style="margin-top:12px;display:flex;gap:8px"><button class="btn btn-pr" onclick="savePayrollSettings()" style="font-size:12px">💾 Save</button>'
          + '<div style="font-size:11px;color:var(--g400);align-self:center">Hourly = monthly_salary ÷ days/month ÷ hours/day</div></div>';
