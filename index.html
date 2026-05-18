@@ -8494,6 +8494,143 @@ function saveInstructionsToSheet(role, cb) {
   }, true);
 }
 
+// ── SCHEDULE CORE FUNCTIONS ──────────────────────────────────────────────────
+
+var scheduleWeekOffset = 0;
+var scheduleData = {};  // { weekKey: { empId: { Mon:'AM', Tue:'OFF', ... } } }
+
+var SHIFT_OPTIONS = [
+  { value: 'AM',       label: 'Morning',   short: 'AM',  color: '#6BA368', time: '08:00–16:00' },
+  { value: 'PM',       label: 'Afternoon', short: 'PM',  color: '#E8821A', time: '12:00–20:00' },
+  { value: 'FULL',     label: 'Full Day',  short: 'Full',color: '#4A2E1F', time: '08:00–20:00' },
+  { value: 'OFF',      label: 'Day Off',   short: 'Off', color: '#9C9588', time: ''             },
+  { value: 'NOT_SET',  label: 'Not Set',   short: '—',   color: '#DDD9CF', time: ''             }
+];
+
+// Returns a string key like "2025-W22" for the week containing today + offset weeks
+function getWeekKey(offset) {
+  var d = new Date();
+  d.setDate(d.getDate() + (offset || 0) * 7);
+  // ISO week: Mon = day 1
+  var day = d.getDay() || 7;
+  d.setDate(d.getDate() + 4 - day);
+  var yearStart = new Date(d.getFullYear(), 0, 1);
+  var week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return d.getFullYear() + '-W' + (week < 10 ? '0' + week : week);
+}
+
+// Returns array of 7 day objects { key:'Mon', label:'Mon 2/6', date:Date }
+function getWeekDates(offset) {
+  var today = new Date();
+  var dow = today.getDay() || 7; // 1=Mon … 7=Sun
+  var monday = new Date(today);
+  monday.setDate(today.getDate() - (dow - 1) + (offset || 0) * 7);
+  monday.setHours(0,0,0,0);
+  var keys = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  return keys.map(function(k, i) {
+    var d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return {
+      key: k,
+      label: k + ' ' + d.getDate() + '/' + (d.getMonth() + 1),
+      date: d
+    };
+  });
+}
+
+// Returns the shift map for one employee in one week
+function getEmpSchedule(empId, weekKey) {
+  if (!scheduleData[weekKey]) scheduleData[weekKey] = {};
+  if (!scheduleData[weekKey][empId]) {
+    scheduleData[weekKey][empId] = {
+      Mon:'NOT_SET', Tue:'NOT_SET', Wed:'NOT_SET', Thu:'NOT_SET',
+      Fri:'NOT_SET', Sat:'NOT_SET', Sun:'NOT_SET'
+    };
+  }
+  return scheduleData[weekKey][empId];
+}
+
+// Navigate weeks (called by Prev / Next buttons)
+function scheduleWeek(dir) {
+  scheduleWeekOffset += dir;
+  renderScheduleView();
+}
+
+// Copy last week's schedule into the current week
+function copyLastWeek() {
+  var weekKey     = getWeekKey(scheduleWeekOffset);
+  var prevWeekKey = getWeekKey(scheduleWeekOffset - 1);
+  if (!scheduleData[prevWeekKey]) {
+    toast('No previous week data to copy');
+    return;
+  }
+  scheduleData[weekKey] = JSON.parse(JSON.stringify(scheduleData[prevWeekKey]));
+  // Push all copied shifts to Sheet
+  var days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  employees.forEach(function(emp) {
+    var s = scheduleData[weekKey][emp.id] || {};
+    days.forEach(function(day) {
+      if (s[day] && s[day] !== 'NOT_SET') {
+        pushShift(emp.id, day, s[day], weekKey);
+      }
+    });
+  });
+  toast('Copied last week\'s schedule ✓');
+  renderScheduleView();
+}
+
+// Save a single shift cell
+function setShift(empId, dayKey, shiftValue, weekKey) {
+  if (!scheduleData[weekKey]) scheduleData[weekKey] = {};
+  if (!scheduleData[weekKey][empId]) {
+    scheduleData[weekKey][empId] = {
+      Mon:'NOT_SET', Tue:'NOT_SET', Wed:'NOT_SET', Thu:'NOT_SET',
+      Fri:'NOT_SET', Sat:'NOT_SET', Sun:'NOT_SET'
+    };
+  }
+  scheduleData[weekKey][empId][dayKey] = shiftValue;
+  // close dropdown
+  document.querySelectorAll('.shift-dd').forEach(function(dd){ dd.style.display='none'; });
+  renderScheduleView();
+  pushShift(empId, dayKey, shiftValue, weekKey);
+}
+
+// Push one shift row to Google Sheets
+function pushShift(empId, dayKey, shiftValue, weekKey) {
+  if (!SHEET_URL) return;
+  apiPost({
+    action: 'setShift',
+    empId: empId,
+    weekKey: weekKey,
+    day: dayKey,
+    shift: shiftValue
+  }, null, true);
+}
+
+// Fetch shift type definitions from Sheet (optional — uses defaults if Sheet has none)
+function fetchShiftTypes(cb) {
+  if (!SHEET_URL) { if (cb) cb(); return; }
+  apiPost({ action: 'getShiftTypes' }, function(d) {
+    if (d && d.ok && Array.isArray(d.shiftTypes) && d.shiftTypes.length > 0) {
+      SHIFT_OPTIONS = d.shiftTypes;
+    }
+    if (cb) cb();
+  }, true);
+}
+
+// Fetch work schedule settings from Sheet
+function fetchWorkSchedule(cb) {
+  if (!SHEET_URL) { if (cb) cb(); return; }
+  apiPost({ action: 'getWorkSchedule' }, function(d) {
+    if (d && d.ok && d.schedule) {
+      window.WORK_SCHEDULE = d.schedule;
+    }
+    if (cb) cb();
+  }, true);
+}
+
+// ── END SCHEDULE CORE ────────────────────────────────────────────────────────
+
 // 🆕 v7.7.8: Fetch schedule plan from Sheet for a given week.
 //            Merges into scheduleData[weekKey] without clobbering local edits.
 function fetchSchedulePlan(weekKey, cb) {
@@ -10987,6 +11124,101 @@ window.addEventListener('load', function() {
 if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
   document.documentElement.classList.add('pwa-mode');
   console.log('Running as installed PWA');
+}
+
+// ── SETTINGS: SAVE PAYROLL SETTINGS ─────────────────
+function savePayrollSettings() {
+  var otRate   = parseFloat((document.getElementById('ps-ot-rate')||{}).value) || 1.5;
+  var days     = parseInt((document.getElementById('ps-days')||{}).value)      || 26;
+  var hours    = parseFloat((document.getElementById('ps-hours')||{}).value)   || 8;
+  var otBuf    = parseInt((document.getElementById('ps-ot-buffer')||{}).value) || 0;
+  var cooldown = parseInt((document.getElementById('ps-cooldown')||{}).value);
+  if (isNaN(cooldown)) cooldown = 30;
+
+  window.PAYROLL = {
+    otRate: otRate,
+    daysPerMonth: days,
+    hoursPerDay: hours,
+    otBufferMin: otBuf,
+    clockOutCooldownMin: cooldown
+  };
+
+  if (SHEET_URL) {
+    apiPost({ action: 'savePayrollSettings', settings: window.PAYROLL }, function(d) {
+      toast(d && d.ok ? '✅ Payroll settings saved' : '⚠️ Saved locally (Sheet sync failed)');
+    }, true);
+  } else {
+    toast('✅ Payroll settings saved');
+  }
+}
+
+// ── SETTINGS: SAVE WORK SCHEDULE ─────────────────────
+function saveWorkSchedule() {
+  var wdStart = (document.getElementById('ws-wd-start')||{}).value || '08:00';
+  var wdEnd   = (document.getElementById('ws-wd-end')||{}).value   || '16:00';
+  var weStart = (document.getElementById('ws-we-start')||{}).value || '08:00';
+  var weEnd   = (document.getElementById('ws-we-end')||{}).value   || '17:00';
+
+  window.WORK_SCHEDULE = {
+    weekday: { startTime: wdStart, endTime: wdEnd },
+    weekend: { startTime: weStart, endTime: weEnd }
+  };
+
+  if (SHEET_URL) {
+    apiPost({ action: 'saveWorkSchedule', schedule: window.WORK_SCHEDULE }, function(d) {
+      toast(d && d.ok ? '✅ Work schedule saved' : '⚠️ Saved locally (Sheet sync failed)');
+    }, true);
+  } else {
+    toast('✅ Work schedule saved');
+  }
+}
+
+// ── ROLE HUB: Show tasks for a specific role ──────────
+function showRoleHub(role) {
+  var roleTasks = (window.checklistTasks || []).filter(function(t){ return t.role === role || !t.role; });
+  var roleEmps  = employees.filter(function(e){ return e.role === role; });
+
+  var html = '<div style="padding:4px">'
+    + '<div style="font-size:16px;font-weight:700;color:var(--br);margin-bottom:4px">📋 ' + roleName(role) + ' — Role Guide</div>'
+    + '<div style="font-size:11px;color:var(--g400);margin-bottom:16px">' + roleEmps.length + ' staff &bull; ' + roleTasks.length + ' tasks</div>';
+
+  var cats = ['Open','During','Close','Weekly'];
+  var catColors = { Open:'#FEF3E7', During:'#EDFAF1', Close:'#EBF3FE', Weekly:'#F3F0FF' };
+  var catText   = { Open:'#D4741A', During:'#1A7F45', Close:'#1D5FBF', Weekly:'#6B46C1' };
+
+  cats.forEach(function(cat) {
+    var catTasks = roleTasks.filter(function(t){ return t.category === cat; });
+    if (!catTasks.length) return;
+    html += '<div style="margin-bottom:14px">'
+      + '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:' + catText[cat] + ';margin-bottom:6px;letter-spacing:.5px">' + cat + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:5px">';
+    catTasks.forEach(function(t) {
+      html += '<div style="background:' + catColors[cat] + ';border-radius:7px;padding:8px 10px;font-size:12px">'
+        + '<span style="font-weight:600">' + escHtml(t.name || t.task || '') + '</span>'
+        + (t.note ? '<div style="font-size:11px;color:var(--g600);margin-top:2px">' + escHtml(t.note) + '</div>' : '')
+        + '</div>';
+    });
+    html += '</div></div>';
+  });
+
+  if (!roleTasks.length) {
+    html += '<div style="text-align:center;padding:24px;color:var(--g400);font-size:13px">No tasks assigned for this role yet.</div>';
+  }
+
+  html += '</div>';
+
+  // Reuse the generic info modal if available, otherwise alert
+  var modal = document.getElementById('info-modal') || document.getElementById('generic-modal');
+  if (modal) {
+    var body = modal.querySelector('.modal-body') || modal.querySelector('.card-bd');
+    if (body) { body.innerHTML = html; modal.classList.add('open'); return; }
+  }
+  // Fallback: open employee modal content area
+  var empModal = document.getElementById('emp-modal');
+  if (empModal) {
+    var bd = empModal.querySelector('.modal-bd') || empModal.querySelector('.card-bd');
+    if (bd) { bd.innerHTML = html; empModal.classList.add('open'); }
+  }
 }
 
 // ── EDITABLE SHIFT TYPES ─────────────────────────────
